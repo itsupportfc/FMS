@@ -1,0 +1,54 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>
+
+            {% block title %}Dashboard{% endblock %}
+        </title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        {% comment %} <script>
+     tailwind.config = {
+         theme: {
+             extend: {
+                 borderRadius: {
+                     'none': '0px',
+                     'sm': '0px',
+                     'md': '0px',
+                     'lg': '0px',
+                     'xl': '0px',
+                     '2xl': '0px',
+                     '3xl': '0px',
+                     'full': '0px',
+                 },
+             },
+         },
+     }
+ </script> {% endcomment %}
+        {% comment %} #TODO: dont use cdn in production!! {% endcomment %}
+        {% comment %} <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script> {% endcomment %}
+
+        <script src="{% static 'js/htmx.min.js' %}"></script>
+    </head>
+    <body class="bg-gray-100 text-gray-900 antialiased">
+        <div class="flex h-screen overflow-hidden">
+            <!-- Sidebar -->
+            <aside class="w-64 bg-white">
+                {% include 'partials/sidebar.html' %}
+
+            </aside>
+
+            <!-- Main Content Area -->
+            <div class="flex-1 flex flex-col overflow-hidden">
+                <!-- Page Content -->
+                <main class="flex-1 overflow-y-auto p-6">
+
+                    {% block content %}{% endblock %}
+                </main>
+            </div>
+        </div>  
+    </body>
+</html>

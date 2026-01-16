@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% load form_filters %}
+
+{% block content %}
+    {% with input_classes="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200" %}
+        <div class="max-w-5xl mx-auto">
+            <div class="flex items-center justify-between mb-4 md:mb-6">
+                <h1 class="text-2xl font-bold">Create New Load</h1>
+                <p class="text-sm text-gray-500">All fields optional unless marked required by the model.</p>
+            </div>
+
+            <form method="post" class="space-y-6 md:space-y-7">
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                    <div class="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+                    </div>
+                {% endif %}
+
+                <section class="grid gap-4 md:gap-6 md:grid-cols-2">
+                    <div class="space-y-2">
+                        <label for="id_load_id" class="text-sm font-medium text-gray-700">Load ID</label>
+                        {{ form.load_id|add_class:input_classes }}
+                        {% if form.load_id.errors %}<p class="text-sm text-red-600">{{ form.load_id.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div class="space-y-2">
+                        <label for="id_broker" class="text-sm font-medium text-gray-700">Broker</label>
+                        {{ form.broker|add_class:input_classes }}
+                        {% if form.broker.errors %}<p class="text-sm text-red-600">{{ form.broker.errors.0 }}</p>{% endif %}
+                    </div>
+                </section>
+
+                <section class="grid gap-4 md:gap-6 md:grid-cols-2">
+                    <div class="space-y-2">
+                        <label for="id_carrier" class="text-sm font-medium text-gray-700">Carrier</label>
+                        {{ form.carrier|add_class:input_classes }}
+                        {% if form.carrier.errors %}<p class="text-sm text-red-600">{{ form.carrier.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div class="space-y-4">
+                        <div id="carrier-assets" class="space-y-4">
+                            <div class="space-y-2">
+                                <label for="id_driver" class="text-sm font-medium text-gray-700">Driver</label>
+                                {{ form.driver|add_class:input_classes }}
+                                {% if form.driver.errors %}<p class="text-sm text-red-600">{{ form.driver.errors.0 }}</p>{% endif %}
+                            </div>
+                            <div class="space-y-2">
+                                <label for="id_truck" class="text-sm font-medium text-gray-700">Truck</label>
+                                {{ form.truck|add_class:input_classes }}
+                                {% if form.truck.errors %}<p class="text-sm text-red-600">{{ form.truck.errors.0 }}</p>{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="grid gap-4 md:gap-6 md:grid-cols-2">
+                    <div class="space-y-2">
+                        <label for="id_pickup_facility" class="text-sm font-medium text-gray-700">Pickup Facility</label>
+                        {{ form.pickup_facility|add_class:input_classes }}
+                        {% if form.pickup_facility.errors %}<p class="text-sm text-red-600">{{ form.pickup_facility.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div class="space-y-2">
+                        <label for="id_pickup_datetime" class="text-sm font-medium text-gray-700">Pickup Date &amp; Time</label>
+                        {{ form.pickup_datetime|add_class:input_classes }}
+                        {% if form.pickup_datetime.errors %}<p class="text-sm text-red-600">{{ form.pickup_datetime.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div class="space-y-2">
+                        <label for="id_delivery_facility" class="text-sm font-medium text-gray-700">Delivery Facility</label>
+                        {{ form.delivery_facility|add_class:input_classes }}
+                        {% if form.delivery_facility.errors %}
+                            <p class="text-sm text-red-600">{{ form.delivery_facility.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="space-y-2">
+                        <label for="id_delivery_datetime" class="text-sm font-medium text-gray-700">Delivery Date &amp; Time</label>
+                        {{ form.delivery_datetime|add_class:input_classes }}
+                        {% if form.delivery_datetime.errors %}
+                            <p class="text-sm text-red-600">{{ form.delivery_datetime.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+                </section>
+
+                <section class="grid gap-4 md:gap-5 md:grid-cols-3">
+                    <div class="space-y-2">
+                        <label for="id_rate" class="text-sm font-medium text-gray-700">Rate</label>
+                        {{ form.rate|add_class:input_classes }}
+                        {% if form.rate.errors %}<p class="text-sm text-red-600">{{ form.rate.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div class="space-y-2">
+                        <label for="id_miles" class="text-sm font-medium text-gray-700">Miles</label>
+                        {{ form.miles|add_class:input_classes }}
+                        {% if form.miles.errors %}<p class="text-sm text-red-600">{{ form.miles.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div class="space-y-2">
+                        <label for="id_status" class="text-sm font-medium text-gray-700">Status</label>
+                        {{ form.status|add_class:input_classes }}
+                        {% if form.status.errors %}<p class="text-sm text-red-600">{{ form.status.errors.0 }}</p>{% endif %}
+                    </div>
+                </section>
+
+                <section class="space-y-2">
+                    <label for="id_remarks" class="text-sm font-medium text-gray-700">Remarks</label>
+                    {{ form.remarks|add_class:input_classes }}
+                    {% if form.remarks.errors %}<p class="text-sm text-red-600">{{ form.remarks.errors.0 }}</p>{% endif %}
+                </section>
+
+                <div class="sticky bottom-0 flex justify-end gap-3 bg-white/80 backdrop-blur supports-[backdrop-filter]:backdrop-blur px-4 py-3 border border-gray-200 rounded-md shadow-sm">
+                    <a href="/loads/"
+                       class="px-4 py-2 rounded-md border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</a>
+                    <button type="submit"
+                            class="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                        Save Load
+                    </button>
+                </div>
+            </form>
+        </div>
+    {% endwith %}
+
+{% endblock %}

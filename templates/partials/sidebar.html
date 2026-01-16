@@ -1,0 +1,56 @@
+<div class="flex flex-col h-full">
+    <!-- Logo/Brand -->
+    <div class="h-16 flex items-center justify-center ">
+        <h2 class="text-xl font-bold text-gray-900 tracking-tight">DISPATCH</h2>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="flex-1 px-4 py-6 space-y-2 bg-white">
+        {% for item in sidebar_items %}
+            <a href="{% url item.url %}"
+               class="flex items-center space-x-3 px-4 py-3 rounded-md border transition-colors
+                      {% if forloop.first %}
+                          bg-gray-100 border border-gray-300
+                      {% else %}
+                          border-gray-200
+                      {% endif %}
+                      hover:bg-gray-200">
+                <span class="text-sm font-medium
+                             {% if forloop.first %}
+                                 text-gray-900
+                             {% else %}
+                                 text-gray-700
+                             {% endif %}">{{ item.label }}</span>
+            </a>
+        {% empty %}
+            <div class="text-sm text-gray-500 px-4 py-3">No navigation items</div>
+        {% endfor %}
+    </nav>
+
+    <!-- Footer -->
+    <div class="px-4 py-6 border-t border-gray-200 bg-white space-y-3">
+        {# User Info #}
+        {% if request.user.is_authenticated %}
+            <div class="px-4 py-3 bg-gray-50 border border-gray-200">
+                <p class="text-sm font-semibold text-gray-900">{{ request.user.get_full_name|default:request.user.username }}</p>
+                <p class="text-xs text-gray-600 mt-1">{{ request.user.get_role_display }}</p>
+            </div>
+        {% endif %}
+
+        {# Logout Button #}
+        <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit"
+                    class="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-gray-100 border border-gray-300 hover:bg-gray-200 transition-colors">
+                <svg class="w-5 h-5 text-gray-700"
+                     fill="none"
+                     stroke="currentColor"
+                     viewBox="0 0 24 24">
+                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                <span class="text-sm font-medium text-gray-800">Logout</span>
+            </button>
+        </form>
+    </div>
+
+</div>

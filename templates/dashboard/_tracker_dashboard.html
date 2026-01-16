@@ -1,0 +1,94 @@
+<!-- Tracking Agent Dashboard -->
+<!-- WHY: Shows loads assigned to this tracker, with focus on actionable items -->
+
+<!-- Stats KPIs -->
+<div class="grid grid-cols-3 gap-6 mb-6">
+    <div class="bg-white border border-gray-200 p-6">
+        <div class="text-sm font-medium text-gray-600 mb-2">Total Active</div>
+        <div class="text-3xl font-bold text-gray-900">{{ active_count }}</div>
+        <div class="text-xs text-gray-500 mt-2">Loads assigned to you</div>
+    </div>
+
+    <div class="bg-white border border-gray-200 p-6">
+        <div class="text-sm font-medium text-gray-600 mb-2">Awaiting Start</div>
+        <div class="text-3xl font-bold text-gray-900">{{ awaiting_start_count }}</div>
+        <div class="text-xs text-gray-500 mt-2">Ready to start transit</div>
+    </div>
+
+    <div class="bg-white border border-gray-200 p-6">
+        <div class="text-sm font-medium text-gray-600 mb-2">In Transit</div>
+        <div class="text-3xl font-bold text-gray-900">{{ in_transit_count }}</div>
+        <div class="text-xs text-gray-500 mt-2">Currently tracking</div>
+    </div>
+</div>
+
+<!-- Active Loads Grid -->
+<div class="grid grid-cols-2 gap-6">
+    <!-- Left: Awaiting Start -->
+    <div class="bg-white border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900">Awaiting Start Transit</h3>
+            <span class="px-3 py-1 bg-blue-100 border border-blue-300 text-sm text-blue-900">{{ awaiting_start_count }} loads</span>
+        </div>
+        <div class="space-y-3 max-h-[500px] overflow-y-auto">
+            {% for load in awaiting_start_loads %}
+                <div class="border border-gray-200 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-medium text-gray-900">{{ load.load_id }}</span>
+                        <span class="text-xs text-gray-500">{{ load.broker.name }}</span>
+                    </div>
+                    <div class="text-sm text-gray-700 mb-3">
+                        <div>
+                            <span class="font-medium">Driver:</span> {{ load.driver.full_name }}
+                        </div>
+                        <div>
+                            <span class="font-medium">Truck:</span> {{ load.truck.truck_number }}
+                        </div>
+                        <div class="mt-2">From: {{ load.pickup_facility.city }}, {{ load.pickup_facility.state }}</div>
+                        <div>To: {{ load.delivery_facility.city }}, {{ load.delivery_facility.state }}</div>
+                    </div>
+                    <a href="{% url 'load_detail' load.load_id %}"
+                       class="block w-full px-4 py-2 bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 transition-colors text-center">
+                        Start Transit
+                    </a>
+                </div>
+            {% empty %}
+                <div class="border border-gray-200 p-4 text-center text-sm text-gray-500">No loads awaiting start</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Right: In Transit -->
+    <div class="bg-white border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900">In Transit (Active Tracking)</h3>
+            <span class="px-3 py-1 bg-amber-100 border border-amber-300 text-sm text-amber-900">{{ in_transit_count }} loads</span>
+        </div>
+        <div class="space-y-3 max-h-[500px] overflow-y-auto">
+            {% for load in in_transit_loads %}
+                <div class="border border-gray-200 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-medium text-gray-900">{{ load.load_id }}</span>
+                        <span class="px-2 py-1 bg-amber-100 border border-amber-300 text-xs text-amber-900">In Transit</span>
+                    </div>
+                    <div class="text-sm text-gray-700 mb-3">
+                        <div>
+                            <span class="font-medium">Driver:</span> {{ load.driver.full_name }}
+                        </div>
+                        <div>
+                            <span class="font-medium">Truck:</span> {{ load.truck.truck_number }}
+                        </div>
+                        <div class="mt-2">From: {{ load.pickup_facility.city }}, {{ load.pickup_facility.state }}</div>
+                        <div>To: {{ load.delivery_facility.city }}, {{ load.delivery_facility.state }}</div>
+                    </div>
+                    <a href="{% url 'load_detail' load.load_id %}"
+                       class="block w-full px-4 py-2 bg-gray-100 border border-gray-300 text-sm font-medium text-gray-800 hover:bg-gray-200 transition-colors text-center">
+                        View & Update
+                    </a>
+                </div>
+            {% empty %}
+                <div class="border border-gray-200 p-4 text-center text-sm text-gray-500">No loads in transit</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

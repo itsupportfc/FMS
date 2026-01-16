@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% load form_filters %}
+
+{% block content %}
+    <div class="max-w-2xl mx-auto">
+        <div class="mb-6">
+            {% if charge %}
+                <h1 class="text-2xl font-semibold text-gray-900">Edit Extra Charge — {{ load.load_id }}</h1>
+                <p class="text-sm text-gray-600">Update charge details and approval status</p>
+            {% else %}
+                <h1 class="text-2xl font-semibold text-gray-900">Add Extra Charge — {{ load.load_id }}</h1>
+                <p class="text-sm text-gray-600">Create a new charge for this load</p>
+            {% endif %}
+        </div>
+
+        <form method="post"
+              action="{% url 'create_accessorial' load.load_id %}"
+              class="bg-white border border-gray-300 p-6 space-y-4">
+            {% csrf_token %}
+
+            <!-- Charge Type -->
+            <div>
+                <label for="{{ form.charge_type.id_for_label }}"
+                       class="block text-sm font-medium text-gray-700 mb-1">
+                    Charge Type <span class="text-red-600">*</span>
+                </label>
+                {{ form.charge_type|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
+                {% if form.charge_type.errors %}<p class="text-red-600 text-xs mt-1">{{ form.charge_type.errors.0 }}</p>{% endif %}
+            </div>
+
+            <!-- Detention Fields (show only if charge_type=detention) -->
+            <div class="space-y-3 pt-3 border-t border-gray-200">
+                <h4 class="text-sm font-semibold">Detention Details</h4>
+
+                <div>
+                    <label for="{{ form.detention_start.id_for_label }}"
+                           class="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                    {{ form.detention_start|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
+                    {% if form.detention_start.errors %}
+                        <p class="text-red-600 text-xs mt-1">{{ form.detention_start.errors.0 }}</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label for="{{ form.detention_end.id_for_label }}"
+                           class="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                    {{ form.detention_end|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
+                    {% if form.detention_end.errors %}
+                        <p class="text-red-600 text-xs mt-1">{{ form.detention_end.errors.0 }}</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label for="{{ form.detention_billed_hours.id_for_label }}"
+                           class="block text-sm font-medium text-gray-700 mb-1">Billed Hours</label>
+                    {{ form.detention_billed_hours|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
+                    {% if form.detention_billed_hours.errors %}
+                        <p class="text-red-600 text-xs mt-1">{{ form.detention_billed_hours.errors.0 }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Layover Fields (show only if charge_type=layover) -->
+            <div class="space-y-3 pt-3 border-t border-gray-200">
+                <h4 class="text-sm font-semibold">Layover Details</h4>
+
+                <div>
+                    <label for="{{ form.layover_start_date.id_for_label }}"
+                           class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                    {{ form.layover_start_date|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
+                    {% if form.layover_start_date.errors %}
+                        <p class="text-red-600 text-xs mt-1">{{ form.layover_start_date.errors.0 }}</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label for="{{ form.layover_end_date.id_for_label }}"
+                           class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                    {{ form.layover_end_date|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
+                    {% if form.layover_end_date.errors %}
+                        <p class="text-red-600 text-xs mt-1">{{ form.layover_end_date.errors.0 }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Amount -->
+            <div>
+                <label for="{{ form.amount.id_for_label }}"
+                       class="block text-sm font-medium text-gray-700 mb-1">Amount (USD)</label>
+                {{ form.amount|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
+                {% if form.amount.errors %}<p class="text-red-600 text-xs mt-1">{{ form.amount.errors.0 }}</p>{% endif %}
+                <p class="text-xs text-gray-500 mt-1">Leave blank for manager to calculate</p>
+            </div>
+
+            <!-- Description -->
+            <div>
+                <label for="{{ form.description.id_for_label }}"
+                       class="block text-sm font-medium text-gray-700 mb-1">Description / Notes</label>
+                {{ form.description|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
+                {% if form.description.errors %}<p class="text-red-600 text-xs mt-1">{{ form.description.errors.0 }}</p>{% endif %}
+                <p class="text-xs text-gray-500 mt-1">Reasons, details, notes, etc.</p>
+            </div>
+
+            <!-- Approval Status -->
+            <div class="grid grid-cols-2 gap-4 pt-4 border-t border-gray-200">
+                <label class="inline-flex items-center text-sm text-gray-700">
+                    {{ form.manager_approved }}<span class="ml-2">Manager Approved</span>
+                </label>
+                <label class="inline-flex items-center text-sm text-gray-700">
+                    {{ form.broker_approved }}<span class="ml-2">Broker Approved</span>
+                </label>
+            </div>
+
+            <!-- Submit -->
+            <div>
+                <button type="submit"
+                        class="w-full bg-gray-500 text-white py-2 px-4 hover:bg-gray-700 transition">
+                    Save Charge
+                </button>
+            </div>
+        </form>
+
+        <div class="mt-4">
+            <a href="{% url 'load_detail' load.load_id %}"
+               class="inline-block px-4 py-2 text-sm bg-gray-100 text-gray-900 border border-gray-300 hover:bg-gray-200 transition">← Back to Load</a>
+        </div>
+    </div>
+
+{% endblock %}

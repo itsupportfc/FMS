@@ -1,0 +1,19 @@
+<!-- templates/loads/partials/carrier_assets.html -->
+
+<div class="grid grid-cols-1 gap-6">
+    <div>
+        <label for="id_driver" class="block text-sm font-medium text-gray-700">Driver</label>
+        <select name="driver" id="id_driver" class="mt-1 block w-full">
+            <option value="">Select driver</option>
+            {% for driver in drivers %}<option value="{{ driver.id }}">{{ driver }}</option>{% endfor %}
+        </select>
+    </div>
+
+    <div>
+        <label for="id_truck" class="block text-sm font-medium text-gray-700">Truck</label>
+        <select name="truck" id="id_truck" class="mt-1 block w-full">
+            <option value="">Select truck</option>
+            {% for truck in trucks %}<option value="{{ truck.id }}">{{ truck }}</option>{% endfor %}
+        </select>
+    </div>
+</div>
