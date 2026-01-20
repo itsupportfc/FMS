@@ -1,8 +1,6 @@
-from turtle import update
-
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.forms import ValidationError
 from django.utils import timezone
 
 User = get_user_model()
@@ -404,72 +402,6 @@ class Accessorial(BaseModel):
         return f"{self.charge_type} {self.load.load_id}"
 
 
-# class DetentionDetail(BaseModel):
-#     accessorial = models.OneToOneField(
-#         Accessorial,
-#         on_delete=models.CASCADE,
-#         related_name="detention",
-#         limit_choices_to={"charge_type": Accessorial.ChargeType.DETENTION},
-#     )
-
-#     start_time = models.DateTimeField()
-#     end_time = models.DateTimeField()
-
-#     billed_hours = models.DecimalField(
-#         max_digits=5,
-#         decimal_places=2,
-#         help_text="Billable detention hours",
-#     )
-
-#     class Meta:
-#         verbose_name = "Detention Detail"
-#         verbose_name_plural = "Detention Details"
-
-#     def clean(self):
-#         if self.end_time and self.start_time:
-#             if self.end_time <= self.start_time:
-#                 raise ValidationError("End time must be after start time.")
-#         if self.billed_hours and self.billed_hours <= 0:
-#             raise ValidationError("Billed hours must be positive.")
-
-#     def __str__(self) -> str:
-#         return f"Detention {self.accessorial.load.load_id} - {self.billed_hours} hours"
-
-
-# class LayoverDetail(BaseModel):
-#     accessorial = models.OneToOneField(
-#         Accessorial,
-#         on_delete=models.CASCADE,
-#         related_name="layover",
-#         limit_choices_to={"charge_type": Accessorial.ChargeType.LAYOVER},
-#     )
-
-#     layover_date = models.DateField()
-#     reason = models.TextField(blank=True)
-
-
-# class TONUDetail(BaseModel):
-#     accessorial = models.OneToOneField(
-#         Accessorial,
-#         on_delete=models.CASCADE,
-#         related_name="tonu",
-#         limit_choices_to={"charge_type": Accessorial.ChargeType.TONU},
-#     )
-
-#     reason = models.TextField(blank=True)
-
-
-# class LumperDetail(BaseModel):
-#     accessorial = models.OneToOneField(
-#         Accessorial,
-#         on_delete=models.CASCADE,
-#         related_name="lumper",
-#         limit_choices_to={"charge_type": Accessorial.ChargeType.LUMPER},
-#     )
-
-#     # receipt_number = models.CharField(max_length=100, blank=True)
-
-
 class Load(BaseModel):
     """
     Freight load - the core business entity.
@@ -770,6 +702,7 @@ class Load(BaseModel):
             actions.append("add_tracking_update")
             actions.append("create_reschedule_request")
             actions.append("add_accessorial")
+            actions.append("view_driver_hos")
 
         # Document upload available for all users, all statuses (including COMPLETED for audit)
         # WHY: May need to upload POD after completion, or detention receipts later
@@ -976,56 +909,6 @@ class Load(BaseModel):
         )
 
 
-# SKIP for V1
-# class Appointment(BaseModel):
-#     """
-#     Pickup or delivery appointment.
-
-#     Workflow context:
-#     - Created during Phase 1 (Booking) based on load pickup/delivery dates
-#     - Can be rescheduled via RescheduleRequest workflow
-
-#     """
-
-#     class AppointmentType(models.TextChoices):
-#         PICKUP = "pickup", "Pickup"
-#         DELIVERY = "delivery", "Delivery"
-
-#     # Relationships
-#     load = models.ForeignKey(
-#         Load, on_delete=models.CASCADE, related_name="appointments"
-#     )
-
-#     # Appointment Details
-#     appointment_type = models.CharField(max_length=10, choices=AppointmentType.choices)
-#     scheduled_datetime = models.DateTimeField(
-#         help_text="Scheduled appointment date and time"
-#     )
-#     is_fcfs = models.BooleanField(
-#         default=False, help_text="First Come First Serve (no appointment required)"
-#     )
-
-#     # Confirmation
-#     confirmation_number = models.CharField(max_length=50, blank=True)
-#     confirmed_with = models.CharField(
-#         max_length=100, blank=True, help_text="Name of person who confirmed"
-#     )
-
-#     # Audit
-#     created_by = models.ForeignKey(
-#         User,
-#         on_delete=models.PROTECT,
-#         related_name="created_appointments",
-#         help_text="User who created this appointment",
-#     )
-
-#     class Meta:
-#         ordering = ["scheduled_datetime"]
-
-#     def __str__(self):
-#         return f"{self.load.load_id} - {self.get_appointment_type_display()} "  # type: ignore
-
-
 class RescheduleRequest(BaseModel):
     """
     Scheduling Log Sheet equivalent
@@ -1121,24 +1004,32 @@ class DutyLog(BaseModel):
         SLEEPER_BERTH = "sleeper_berth", "Sleeper Berth"
         DRIVING = "driving", "Driving"
         ON_DUTY_NOT_DRIVING = "on_duty_not_driving", "On Duty (Not Driving)"
+        # Additional statuses for better tracking
+        YARD_MOVE = "yard_move", "Yard Move"
+        PERSONAL_CONVEYANCE = "personal", "Personal Conveyance"
 
     # Relationships
     driver = models.ForeignKey(
-        Driver, on_delete=models.CASCADE, related_name="duty_logs"
+        Driver, on_delete=models.PROTECT, related_name="duty_logs"
+    )
+    truck = models.ForeignKey(
+        Truck, on_delete=models.PROTECT, null=True, blank=True, related_name="duty_logs"
     )
     load = models.ForeignKey(
         Load,
         on_delete=models.PROTECT,
         related_name="duty_logs",
+        null=True,
+        blank=True,
     )
 
     # Duty Entry
     status = models.CharField(max_length=25, choices=DutyStatus.choices)
     start_time = models.DateTimeField()
     end_time = models.DateTimeField(null=True, blank=True)
-    duration = models.DurationField(
-        null=True, blank=True, help_text="Auto-calculated from start/end times"
-    )
+    # duration = models.DurationField(
+    #     null=True, blank=True, help_text="Auto-calculated from start/end times"
+    # )
 
     # Location
     current_location = models.CharField(
@@ -1155,11 +1046,15 @@ class DutyLog(BaseModel):
         User, on_delete=models.PROTECT, related_name="created_duty_logs"
     )
 
-    def save(self, *args, **kwargs):
-        """Auto-calculate duration when both start and end times are present."""
-        if self.start_time and self.end_time:
-            self.duration = self.end_time - self.start_time
-        super().save(*args, **kwargs)
+    def clean(self):
+        if self.end_time and self.end_time <= self.start_time:
+            raise ValidationError("End time must be after start time")
+
+    @property
+    def duration(self):
+        if not self.end_time:
+            return None
+        return self.end_time - self.start_time
 
 
 class TrackingUpdate(BaseModel):

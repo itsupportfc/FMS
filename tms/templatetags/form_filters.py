@@ -2,6 +2,7 @@ from django import template
 
 register = template.Library()
 
+
 # Filters transform values and are applied with | in templates
 @register.filter
 def add_class(field, css_class):

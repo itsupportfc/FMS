@@ -1,15 +1,23 @@
+from os import access
+from webbrowser import get
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from accounts.models import User
+from tms.services.duty_logs import create_duty_log
+from tms.services.hos import HOSCalculator
 
 from .forms import (
     AccessorialForm,
     DocumentUploadForm,
+    DutyLogForm,
     LoadForm,
     RescheduleRequestForm,
     TrackingUpdateForm,
@@ -518,16 +526,7 @@ def update_reschedule_approvals(request, load_id, request_id):
 @login_required
 def create_accessorial(request, load_id):
     """
-    Create or edit accessorial charge for a load.
-
-    Simplified V1: Single form, all fields in one model.
-    No HTMX, no detail forms - just standard Django form.
-
-    GET: Show form page with all fields
-    POST: Validate and save Accessorial
-
-    Query Parameters:
-    - edit=<charge_id>: Edit existing charge instead of creating new one
+    Create accessorial charge for a load.
     """
 
     load = get_object_or_404(Load, load_id=load_id)
@@ -537,35 +536,49 @@ def create_accessorial(request, load_id):
         messages.error(request, "Not authorized to add charges.")
         return redirect("load_detail", load_id=load.load_id)
 
-    # Check if editing existing charge
-    charge_id = request.GET.get("edit")
-    accessorial = None
-    if charge_id:
-        accessorial = get_object_or_404(Accessorial, id=charge_id, load=load)
-
     if request.method == "POST":
-        form = AccessorialForm(request.POST, instance=accessorial)
+        form = AccessorialForm(request.POST)
 
         if form.is_valid():
-            charge = form.save(commit=False)
-            if not charge.load_id:  # Only set if creating new
-                charge.load = load
-                charge.created_by = request.user
-            charge.save()
+            accessorial = form.save(commit=False)
+            accessorial.load = load
+            accessorial.created_by = request.user
+            accessorial.save()
 
-            if accessorial:
-                messages.success(
-                    request, f"Charge updated: {charge.get_charge_type_display()}"
-                )
-            else:
-                messages.success(
-                    request, f"Charge added: {charge.get_charge_type_display()}"
-                )
-
+            messages.success(request, "Charge added.")
             return redirect("load_detail", load_id=load.load_id)
         else:
             messages.error(request, "Please correct the errors below.")
 
+    else:
+        # GET: Show form page
+        form = AccessorialForm()
+
+    return render(
+        request,
+        "tms/accessorial_form.html",
+        {"form": form, "load": load, "mode": "create"},
+    )
+
+
+@login_required
+def edit_accessorial(request, load_id, pk):
+    load = get_object_or_404(Load, load_id=load_id)
+    accessorial = get_object_or_404(Accessorial, pk=pk, load=load)
+
+    # Check permissions
+    if request.user.role not in ["dispatcher", "tracking_agent"]:
+        messages.error(request, "Not authorized to edit charges.")
+        return redirect("load_detail", load_id=load.load_id)
+    if request.method == "POST":
+        form = AccessorialForm(request.POST, instance=accessorial)
+
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Charge updated.")
+            return redirect("load_detail", load_id=load.load_id)
+        else:
+            messages.error(request, "Please correct the errors below.")
     else:
         # GET: Show form page
         form = AccessorialForm(instance=accessorial)
@@ -573,5 +586,95 @@ def create_accessorial(request, load_id):
     return render(
         request,
         "tms/accessorial_form.html",
-        {"form": form, "load": load, "charge": accessorial},
+        {"form": form, "load": load, "mode": "edit", "charge": accessorial},
+    )
+
+
+@login_required
+def accessorial_charge_type_fields(request):
+    charge_type = request.GET.get("charge_type")
+    charge_id = request.GET.get("charge_id")  # Optional, for edit forms
+
+    accessorial = None
+    if charge_id:
+        accessorial = get_object_or_404(Accessorial, id=charge_id)
+
+    return render(
+        request,
+        "tms/partials/accessorial_charge_type_fields.html",
+        {
+            "charge_type": charge_type,
+            "charge": accessorial,
+        },
+    )
+
+
+@login_required
+def create_duty_log_view(request, load_id):
+    load = get_object_or_404(Load, load_id=load_id)
+
+    if request.user.role != "tracking_agent":
+        messages.error(request, "Only tracking agents can add duty logs.")
+        return redirect("load_detail", load_id=load.load_id)
+
+    driver = load.driver
+    if not driver:
+        messages.error(request, "Load has no assigned driver.")
+        return redirect("load_detail", load_id=load.load_id)
+
+    if request.method == "POST":
+        form = DutyLogForm(request.POST)
+        if form.is_valid():
+            log = form.save(commit=False)
+            log.driver = driver
+            log.truck = load.truck
+            log.created_by = request.user
+
+            try:
+                create_duty_log(log=log)
+                messages.success(request, "Duty log created successfully.")
+            except ValidationError as e:
+                messages.error(request, f"Error creating duty log: {e.messages[0]}")
+
+            return redirect("load_detail", load_id=load.load_id)
+    else:
+        form = DutyLogForm(initial={"start_time": timezone.now()})
+
+    return render(
+        request,
+        "tms/duty_log_form.html",
+        {"form": form, "load": load},
+    )
+
+
+@login_required
+def driver_hos_summary(request, driver_id):
+    driver = get_object_or_404(Driver, id=driver_id)
+    summary = HOSCalculator(driver).summary()
+
+    # Format timedeltas to human-readable strings for template display
+    def format_timedelta(td):
+        if not td:
+            return "0h 0m"
+        total_seconds = int(td.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        return f"{hours}h {minutes}m"
+
+    # Convert timedeltas to formatted strings
+    formatted_summary = {
+        "driving_today": format_timedelta(summary.get("driving_today")),
+        "driving_remaining": format_timedelta(summary.get("driving_remaining")),
+        "cycle_remaining": format_timedelta(summary.get("cycle_remaining")),
+        "break_required": summary.get("break_required", False),
+        "warnings": summary.get("warnings", []),
+    }
+
+    return render(
+        request,
+        "tms/partials/driver_hos_summary.html",
+        {
+            "driver": driver,
+            "summary": formatted_summary,
+        },
     )

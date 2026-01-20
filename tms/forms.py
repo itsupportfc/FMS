@@ -5,6 +5,7 @@ from .models import (
     Accessorial,
     Document,
     Driver,
+    DutyLog,
     Load,
     RescheduleRequest,
     TrackingUpdate,
@@ -318,19 +319,6 @@ class RescheduleRequestForm(forms.ModelForm):
 
 
 class AccessorialForm(forms.ModelForm):
-    """
-    Form for creating and editing accessorial charges.
-    All fields in single model - no separate detail forms needed.
-
-    Fields:
-    - charge_type: Required dropdown (Detention, Layover, TONU, Lumper, Other)
-    - amount: Optional (manager calculates for preliminary charges)
-    - description: Optional text (used for reasons, notes, etc.)
-    - Detention: detention_start, detention_end, detention_billed_hours
-    - Layover: layover_start_date, layover_end_date
-    - Approvals: manager_approved, broker_approved
-    """
-
     class Meta:
         model = Accessorial
         fields = [
@@ -407,4 +395,68 @@ class AccessorialForm(forms.ModelForm):
             ),
             "manager_approved": forms.CheckboxInput(),
             "broker_approved": forms.CheckboxInput(),
+        }
+
+        def clean(self):
+            """Custom validation based on charge_type."""
+            cleaned_data = super().clean()
+            charge_type = cleaned_data.get("charge_type")
+
+            if charge_type == Accessorial.ChargeType.DETENTION:
+                detention_start = cleaned_data.get("detention_start")
+                detention_end = cleaned_data.get("detention_end")
+                billed_hours = cleaned_data.get("detention_billed_hours")
+
+                if not detention_start or not detention_end:
+                    raise forms.ValidationError(
+                        "Detention start and end times are required for Detention charges."
+                    )
+                if detention_end <= detention_start:
+                    raise forms.ValidationError(
+                        "Detention end time must be after start time."
+                    )
+                if billed_hours is None or billed_hours <= 0:
+                    raise forms.ValidationError(
+                        "Billed hours must be a positive number for Detention charges."
+                    )
+
+            elif charge_type == Accessorial.ChargeType.LAYOVER:
+                layover_start = cleaned_data.get("layover_start_date")
+                layover_end = cleaned_data.get("layover_end_date")
+
+                if not layover_start or not layover_end:
+                    raise forms.ValidationError(
+                        "Layover start and end dates are required for Layover charges."
+                    )
+                if layover_end < layover_start:
+                    raise forms.ValidationError(
+                        "Layover end date must be on or after start date."
+                    )
+            return cleaned_data
+
+
+# ============================================================================
+# HOS
+# ============================================================================
+
+
+class DutyLogForm(forms.ModelForm):
+    class Meta:
+        model = DutyLog
+        fields = [
+            "status",
+            "start_time",
+            "current_location",
+            "remarks",
+        ]
+        widgets = {
+            "start_time": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "60"}
+            ),
+            "current_location": forms.TextInput(
+                attrs={"placeholder": "e.g., I-80 exit 42, IA"}
+            ),
+            "remarks": forms.Textarea(
+                attrs={"rows": 3, "placeholder": "Add brief notes..."}
+            ),
         }
