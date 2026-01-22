@@ -1,0 +1,144 @@
+{% load form_filters %}
+
+{# Booking Information Section #}
+<div class="section">
+    <h2 class="section-title">Booking Information</h2>
+    <div class="grid grid-cols-2 gap-6">
+        <div>
+            <label class="form-label">Load ID</label>
+            {{ form.load_id|add_class:"form-input" }}
+        </div>
+        <div>
+            <label class="form-label">Broker</label>
+            {{ form.broker|add_class:"form-select" }}
+        </div>
+    </div>
+</div>
+
+{# Route Information Section #}
+<div class="section">
+    <h2 class="section-title">Route Information</h2>
+    <div class="grid grid-cols-2 gap-6">
+        <div>
+            <div class="space-y-4">
+                <div>
+                    <label class="form-label">Pickup Facility</label>
+                    {{ form.pickup_facility|add_class:"form-select" }}
+                </div>
+                <div>
+                    <label class="form-label">Pickup Date/Time</label>
+                    {{ form.pickup_datetime|add_class:"form-input" }}
+                </div>
+                <div>
+                    <label class="form-label">Appointment Type</label>
+                    {{ form.pickup_appointment_type|add_class:"form-select" }}
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="space-y-4">
+                <div>
+                    <label class="form-label">Delivery Facility</label>
+                    {{ form.delivery_facility|add_class:"form-select" }}
+                </div>
+                <div>
+                    <label class="form-label">Delivery Date/Time</label>
+                    {{ form.delivery_datetime|add_class:"form-input" }}
+                </div>
+                <div>
+                    <label class="form-label">Appointment Type</label>
+                    {{ form.delivery_appointment_type|add_class:"form-select" }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Financial Information Section #}
+<div class="section">
+    <h2 class="section-title">Financial Information</h2>
+    <div class="grid grid-cols-2 gap-6">
+        <div>
+            <label class="form-label">Miles</label>
+            {{ form.miles|add_class:"form-input" }}
+        </div>
+        <div>
+            <label class="form-label">Rate ($)</label>
+            {{ form.rate|add_class:"form-input" }}
+        </div>
+        <div>
+            <label class="form-label">Commission Type</label>
+            {{ form.commission_type|add_class:"form-select" }}
+        </div>
+        <div>
+            <label class="form-label">Dispatcher Amount</label>
+            {{ form.dispatcher_commission|add_class:"form-input" }}
+        </div>
+    </div>
+
+    {% if load.rpm %}
+        <div class="mt-6 p-4 bg-blue-50 border border-blue-200">
+            <p class="text-sm text-gray-700">
+                <span class="font-semibold">Rate Per Mile:</span> ${{ load.rpm|floatformat:2 }}
+            </p>
+        </div>
+    {% endif %}
+</div>
+
+{# Carrier Assignment Section #}
+<div class="section">
+    <h2 class="section-title">Carrier Assignment</h2>
+    <div class="grid grid-cols-3 gap-6">
+        <div>
+            <label class="form-label">Carrier</label>
+            {{ form.carrier|add_class:"form-select" }}
+        </div>
+        <div id="carrier-assets" class="col-span-2 grid grid-cols-2 gap-6">
+            <div>
+                <label class="form-label">Driver</label>
+                {{ form.driver|add_class:"form-select" }}
+            </div>
+            <div>
+                <label class="form-label">Truck</label>
+                {{ form.truck|add_class:"form-select" }}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Milestone Timestamps Section #}
+{% if load.status != 'booked' %}
+    <div class="section">
+        <h2 class="section-title">Milestone Timestamps</h2>
+
+        <div class="grid grid-cols-2 gap-6">
+            <div>
+                <label class="form-label">Pickup Arrival</label>
+                {{ form.pickup_arrival_at|add_class:"form-input" }}
+            </div>
+            <div>
+                <label class="form-label">Pickup Departure</label>
+                {{ form.pickup_departure_at|add_class:"form-input" }}
+            </div>
+            <div>
+                <label class="form-label">Delivery Arrival</label>
+                {{ form.delivery_arrival_at|add_class:"form-input" }}
+            </div>
+            <div>
+                <label class="form-label">Delivery Departure</label>
+                {{ form.delivery_departure_at|add_class:"form-input" }}
+            </div>
+            <div>
+                <label class="form-label">Delivered At</label>
+                {{ form.delivered_at|add_class:"form-input" }}
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+{# Remarks Section #}
+<div class="section">
+    <h2 class="section-title">Remarks</h2>
+    {{ form.remarks|add_class:"form-textarea" }}
+</div>

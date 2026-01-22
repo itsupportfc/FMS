@@ -182,6 +182,7 @@ class LoadForm(forms.ModelForm):
         # Lock financial fields after IN_TRANSIT
         if self.instance and self.instance.status in [
             Load.Status.IN_TRANSIT,
+            Load.Status.DELIVERED,
             Load.Status.COMPLETED,
         ]:
             # Add obvious disabled styling
@@ -397,42 +398,42 @@ class AccessorialForm(forms.ModelForm):
             "broker_approved": forms.CheckboxInput(),
         }
 
-        def clean(self):
-            """Custom validation based on charge_type."""
-            cleaned_data = super().clean()
-            charge_type = cleaned_data.get("charge_type")
+    def clean(self):
+        """Custom validation based on charge_type."""
+        cleaned_data = super().clean()
+        charge_type = cleaned_data.get("charge_type")
 
-            if charge_type == Accessorial.ChargeType.DETENTION:
-                detention_start = cleaned_data.get("detention_start")
-                detention_end = cleaned_data.get("detention_end")
-                billed_hours = cleaned_data.get("detention_billed_hours")
+        if charge_type == Accessorial.ChargeType.DETENTION:
+            detention_start = cleaned_data.get("detention_start")
+            detention_end = cleaned_data.get("detention_end")
+            billed_hours = cleaned_data.get("detention_billed_hours")
 
-                if not detention_start or not detention_end:
-                    raise forms.ValidationError(
-                        "Detention start and end times are required for Detention charges."
-                    )
-                if detention_end <= detention_start:
-                    raise forms.ValidationError(
-                        "Detention end time must be after start time."
-                    )
-                if billed_hours is None or billed_hours <= 0:
-                    raise forms.ValidationError(
-                        "Billed hours must be a positive number for Detention charges."
-                    )
+            if not detention_start or not detention_end:
+                raise forms.ValidationError(
+                    "Detention start and end times are required for Detention charges."
+                )
+            if detention_end <= detention_start:
+                raise forms.ValidationError(
+                    "Detention end time must be after start time."
+                )
+            if billed_hours is None or billed_hours <= 0:
+                raise forms.ValidationError(
+                    "Billed hours must be a positive number for Detention charges."
+                )
 
-            elif charge_type == Accessorial.ChargeType.LAYOVER:
-                layover_start = cleaned_data.get("layover_start_date")
-                layover_end = cleaned_data.get("layover_end_date")
+        elif charge_type == Accessorial.ChargeType.LAYOVER:
+            layover_start = cleaned_data.get("layover_start_date")
+            layover_end = cleaned_data.get("layover_end_date")
 
-                if not layover_start or not layover_end:
-                    raise forms.ValidationError(
-                        "Layover start and end dates are required for Layover charges."
-                    )
-                if layover_end < layover_start:
-                    raise forms.ValidationError(
-                        "Layover end date must be on or after start date."
-                    )
-            return cleaned_data
+            if not layover_start or not layover_end:
+                raise forms.ValidationError(
+                    "Layover start and end dates are required for Layover charges."
+                )
+            if layover_end < layover_start:
+                raise forms.ValidationError(
+                    "Layover end date must be on or after start date."
+                )
+        return cleaned_data
 
 
 # ============================================================================

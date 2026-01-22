@@ -1,0 +1,28 @@
+<div class="card">
+    <div class="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
+        <h3 class="card-header mb-0 pb-0 border-0">Tracking History</h3>
+        {% if "add_tracking_update" in available_actions %}
+            <a href="{% url 'create_tracking_update' load.load_id %}"
+               class="btn-secondary btn-sm">Add Update</a>
+        {% endif %}
+    </div>
+
+    {% if tracking_updates %}
+        <ul class="info-list">
+            {% for tu in tracking_updates %}
+                <li class="info-item">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="font-medium text-[15px] text-gray-900">{{ tu.created_at|date:"M d, H:i" }} — {{ tu.tracking_agent.get_full_name }}</span>
+                        {% if tu.is_delayed %}<span class="badge-amber">Delayed</span>{% endif %}
+                    </div>
+                    {% if tu.current_location %}<p class="text-[13px] text-gray-600">Location: {{ tu.current_location }}</p>{% endif %}
+                    {% if tu.delay_reason %}<p class="text-[13px] text-gray-600">Reason: {{ tu.get_delay_reason_display }}</p>{% endif %}
+                    {% if tu.new_eta %}<p class="text-[13px] text-gray-600">New ETA: {{ tu.new_eta|date:"M d, Y H:i" }}</p>{% endif %}
+                    {% if tu.notes %}<p class="helper-text mt-1">{{ tu.notes }}</p>{% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="helper-text italic">No tracking updates yet.</p>
+    {% endif %}
+</div>

@@ -384,6 +384,11 @@ class Accessorial(BaseModel):
     # tonu specific
     # lumper specific
 
+    def clean(self):
+        super().clean()
+        if self.amount is not None and self.amount < 0:
+            raise ValidationError({"amount": "Amount cannot be negative."})
+
     @property
     def is_approved(self):
         """
@@ -414,10 +419,10 @@ class Load(BaseModel):
         # AT_PICKUP = "at_pickup", "At Pickup"
         IN_TRANSIT = "in_transit", "In Transit"
         # AT_DELIVERY = "at_delivery", "At Delivery"
-        # DELIVERED = "delivered", "Delivered"
+        DELIVERED = "delivered", "Delivered"
         COMPLETED = "completed", "Completed"
         CANCELLED = "cancelled", "Cancelled"
-        TONU = "tonu", "TONU (Truck Ordered Not Used)"
+        # TONU = "tonu", "TONU (Truck Ordered Not Used)"
 
     class PaymentMethod(models.TextChoices):
         PERCENTAGE = "percentage", "Percentage of Rate"
@@ -429,6 +434,12 @@ class Load(BaseModel):
         help_text="Broker's load/reference number",
         unique=True,
         verbose_name="Broker Load ID",
+    )
+
+    commodity_type = models.CharField(max_length=100, blank=True, null=True)
+    weight = models.PositiveIntegerField(
+        blank=True,
+        null=True,
     )
 
     # Relationships
@@ -594,8 +605,10 @@ class Load(BaseModel):
 
     def save(self, *args, **kwargs):
         # Auto-calculate RPM
-        if self.miles and self.rate:
+        if self.miles and self.rate and self.miles > 0:
             self.rpm = self.rate / self.miles
+        else:
+            self.rpm = None
 
         super().save(*args, **kwargs)
 
@@ -668,10 +681,12 @@ class Load(BaseModel):
 
     def get_available_actions(self, user):
         """
-        Return list of actions names this user can perform on this load
-        WHY: Decision matrix centralized in one place prevents scattered
-        permission checks across templates. Makes adding new roles/actions
-        easier - just modify this method instead of hunting through templates.
+        Return list of actions this user can perform on this load RIGHT
+          NOW.
+
+        WHY: Only showing relevant actions (not grayed-out buttons) creates
+        cleaner UX and reduces cognitive load. Users see exactly what they
+        can do at this moment based on load status.
 
         Returns: List of action strings like ["start_transit", "upload_document"]
 
@@ -682,31 +697,82 @@ class Load(BaseModel):
                 {% endif %}
             {% endwith %}
 
-        NOTE: We return ALL possible actions. Validation happens in views.
-        Template shows button always; clicking triggers error if preconditions not met.
-        This gives users clear error messages explaining what's missing.
+        Design: Actions filtered by role AND current load status.
+        Validation still happens in views for safety, but UI only shows
+        actions that should succeed.
         """
         actions = []
 
-        # Dispatcher actions ( create and handover load)
+        # Dispatcher actions
         if user.role == "dispatcher":
-            actions.append("handover_to_tracking")
-            actions.append("cancel_load")
-            actions.append("create_reschedule_request")
-            actions.append("add_accessorial")
+            # Can handover only when BOOKED and all preconditions met
+            if self.status == self.Status.BOOKED and self.can_handover():
+                actions.append("handover_to_tracking")
 
-        # Tracking agent actions (tracks and completes deliveries)
+            # Can cancel anytime before completion
+            if self.status not in [
+                self.Status.COMPLETED,
+                self.Status.DELIVERED,
+                self.Status.CANCELLED,
+            ]:
+                actions.append("cancel_load")
+
+            # Can reschedule anytime before completion
+            if self.status not in [
+                self.Status.COMPLETED,
+                self.Status.CANCELLED,
+                self.Status.DELIVERED,
+            ]:
+                actions.append("create_reschedule_request")
+
+            # Can add accessorials anytime before completion
+            if self.status not in [self.Status.COMPLETED, self.Status.CANCELLED]:
+                actions.append("add_accessorial")
+
+        # Tracking agent actions
         if user.role == "tracking_agent":
-            actions.append("start_transit")
-            actions.append("complete_load")
-            actions.append("add_tracking_update")
-            actions.append("create_reschedule_request")
-            actions.append("add_accessorial")
+            # Can start transit only when dispatched
+            if self.status == self.Status.DISPATCHED:
+                actions.append("start_transit")
+
+            # Can mark delivered only when in transit
+            if self.status == self.Status.IN_TRANSIT:
+                actions.append("mark_delivered")
+
+            # Can complete only when delivered
+            if self.status == self.Status.DELIVERED:
+                actions.append("complete_load")
+
+            # Can add tracking updates during active transit
+            if self.status in [
+                self.Status.DISPATCHED,
+                self.Status.IN_TRANSIT,
+                # self.Status.DELIVERED,
+            ]:
+                actions.append("add_tracking_update")
+
+            # Can reschedule anytime before completion
+            if self.status not in [
+                self.Status.COMPLETED,
+                self.Status.CANCELLED,
+                self.Status.DELIVERED,
+            ]:
+                actions.append("create_reschedule_request")
+
+            # Can add accessorials anytime before completion
+            if self.status not in [self.Status.COMPLETED, self.Status.CANCELLED]:
+                actions.append("add_accessorial")
+
+        # COMMON ACTIONS FOR ALL ROLES
+
+        # Can view driver HOS if driver is assigned
+        if self.driver:
             actions.append("view_driver_hos")
 
         # Document upload available for all users, all statuses (including COMPLETED for audit)
         # WHY: May need to upload POD after completion, or detention receipts later
         actions.append("upload_document")
+
         return actions
 
     # ============================================================================
@@ -786,7 +852,7 @@ class Load(BaseModel):
         Side Effects:
         - Sets pickup_departure_at timestamp (when truck left shipper)
 
-        Note: pickup_arrival_at should be set separately (manual entry by tracker)
+        Note: pickup_arrival_at should be set separately (manual entry by tracker) => IF NEEDED
         WHY: Tracker logs arrival when driver calls/texts, but departure is when
         they actually start moving - that's when status changes.
         """
@@ -802,41 +868,27 @@ class Load(BaseModel):
         )
 
     @transaction.atomic
-    def complete_load(self):
+    def mark_delivered(self):
         """
-        Transition: IN_TRANSIT → COMPLETED
+        Transition: IN_TRANSIT → DELIVERED
 
-        WHY: Marks load as delivered and ready for billing/invoicing.
-        After this, accounts team can create invoices.
+        WHY: Marks load as physically delivered at destination.
+        This confirms the truck has completed delivery but load is not yet
+        PAID , the accounts team will now take over and create invoices and track payment.
 
         Validation:
-        - Checks that all documents that are required for completion exist
-        - WHY: Can't bill customer without POD (Proof of Delivery)
+        - Checks that all documents required for delivery exist
+        - WHY: Can't mark delivered without POD (Proof of Delivery)
 
         Side Effects:
-        - Sets completed_at timestamp (when delivery confirmed)
-
-        Future Enhancement: Could check if all accessorials are APPROVED
-        before allowing completion (currently allows pending charges).
+        - Sets delivered_at timestamp (when delivery physically completed)
         """
 
         # Guard clause
         if self.status != self.Status.IN_TRANSIT:
             raise ValueError("Load is not in IN_TRANSIT status.")
 
-        # required_docs = self.documents.filter(is_required_for_completion=True)
-        # if required_docs.exists():
-        #     missing_docs = required_docs.filter(
-        #         file__isnull=True
-        #     ) | required_docs.filter(file__exact="")
-        #     if missing_docs.exists():
-        #         missing_types = ", ".join(
-        #             missing_docs.values_list("get_document_type_display", flat=True)
-        #         )
-        #         raise ValueError(
-        #             f"Cannot complete load as these Documents are Missing: {missing_types}"
-        #         )
-
+        # Check required documents (POD, BOL)
         missing_types = []
         for doc_type in Document.REQUIRED_FOR_COMPLETION:
             if not self.documents.filter(document_type=doc_type).exists():
@@ -845,13 +897,36 @@ class Load(BaseModel):
                 )
         if missing_types:
             raise ValueError(
-                f"Cannot complete load as these Documents are Missing: {', '.join(missing_types)}"
+                f"Cannot mark as delivered. These documents are missing: {', '.join(missing_types)}"
             )
 
-        # TODO: what extra things we can check?
-        # 1. if TONU => approved by broker?
-        # 2. Detention => receipts uploaded? timestamps entered?
-        #
+        # TODO: Additional checks before marking delivered
+        # 1. delivery_arrival_at is set? => ??
+        # 2. Accessorials approved?? here or in complete_load?
+        self._transition(
+            new_status=self.Status.DELIVERED,
+            delivered_at=timezone.now(),
+        )
+
+    @transaction.atomic
+    def complete_load(self):
+        """
+        Transition: DELIVERED → COMPLETED
+        WHY: Marks load as fully completed and closed.
+        This indicates all tracking, paperwork, and billing are done.
+
+        BUT payment from carrier is still pending.
+        """
+
+        # Guard clause
+        if self.status != self.Status.DELIVERED:
+            raise ValueError("Load is not in DELIVERED status.")
+
+        # TODO: Additional checks before final completion
+        # 1. All accessorials approved?
+        # 2. All detention/layover details finalized?
+        # 3. Carrier payment confirmed?
+
         self._transition(
             new_status=self.Status.COMPLETED,
             completed_at=timezone.now(),
@@ -885,28 +960,30 @@ class Load(BaseModel):
         """
 
         # Guard clause
-        if self.status in [self.Status.CANCELLED, self.Status.COMPLETED]:
-            raise ValueError("Load is already CANCELLED or COMPLETED.")
+        if self.status in [
+            self.Status.CANCELLED,
+            self.Status.COMPLETED,
+            self.Status.DELIVERED,
+        ]:
+            raise ValueError("Load is already CANCELLED, DELIVERED or COMPLETED.")
 
         self._transition(
             new_status=self.Status.CANCELLED,
             cancelled_at=timezone.now(),
         )
 
-        # Auto create TONU accessorial( with PENDING approval)
+        # Auto-create TONU accessorial charge (initially pending via boolean approvals)
         tonu = Accessorial.objects.create(
             load=self,
             charge_type=Accessorial.ChargeType.TONU,
             amount=0.00,  # will be set during approval
             description=f"TONU charge - Load cancelled at {self.Status(self.status).label}",
-            approval_status=Accessorial.ApprovalStatus.PENDING,
             created_by=self.dispatcher,
         )
-
-        TONUDetail.objects.create(
-            accessorial=tonu,
-            reason=f"Load cancelled at {self.Status(self.status).label}",
-        )
+        # Free up truck status
+        if self.truck:
+            self.truck.current_status = Truck.TruckStatus.AVAILABLE
+            self.truck.save(update_fields=["current_status"])
 
 
 class RescheduleRequest(BaseModel):

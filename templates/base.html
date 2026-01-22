@@ -4,51 +4,333 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8">
+        {#Desktop Only viewport#}
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="color-scheme" content="light">
         <title>
 
             {% block title %}Dashboard{% endblock %}
         </title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+              rel="stylesheet">
+        {#Tailwind CDN#}
         <script src="https://cdn.tailwindcss.com"></script>
-        {% comment %} <script>
-     tailwind.config = {
-         theme: {
-             extend: {
-                 borderRadius: {
-                     'none': '0px',
-                     'sm': '0px',
-                     'md': '0px',
-                     'lg': '0px',
-                     'xl': '0px',
-                     '2xl': '0px',
-                     '3xl': '0px',
-                     'full': '0px',
-                 },
-             },
-         },
-     }
- </script> {% endcomment %}
-        {% comment %} #TODO: dont use cdn in production!! {% endcomment %}
-        {% comment %} <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script> {% endcomment %}
+        {# Consolidated Tailwind Config #}
+        <script>
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        fontFamily: {
+                            sans: ['Inter', 'system-ui', 'sans-serif'],
+                        },
 
-        <script src="{% static 'js/htmx.min.js' %}"></script>
+                    }
+                }
+            }
+        </script>
+
+        <style type="text/tailwindcss">
+            @layer base {
+                body {
+                    @apply font-sans bg-gray-50 text-gray-900 antialiased;
+                }
+
+
+
+                /* BETTER KEYBOARD FOCUS (ACCESSIBILITY) */
+                a:focus-visible,
+                button:focus-visible,
+                input:focus-visible,
+                select:focus-visible,
+                textarea:focus-visible {
+                    @apply outline-none ring-2 ring-offset-2 ring-green-500;
+                }
+
+                /* IMPROVED SCROLLBAR FOR DESKTOP */
+                ::-webkit-scrollbar {
+                    width: 10px;
+                }
+
+                ::-webkit-scrollbar-thumb {
+                    background-color: #d1d5db;
+                    /* gray-300 */
+                    border-radius: 6px;
+                }
+
+                ::-webkit-scrollbar-track {
+                    background-color: #f3f4f6;
+                    /* gray-100 */
+                }
+
+            }
+
+            @layer components {
+                /* ============================================
+                   LAYOUT COMPONENTS
+                   ============================================ */
+
+                /* Card: White container with border and shadow
+                   Used in: Dashboard cards, form sections, load detail sidebar panels */
+                .card {
+                    @apply bg-white border border-gray-200 shadow-sm rounded-lg p-5;
+                }
+
+                /* Card Header: Section title with bottom border
+                   Used in: All card titles, form section headings */
+                .card-header {
+                    @apply text-lg font-semibold text-gray-900 pb-3 mb-4 border-b border-gray-200;
+                }
+
+                /* Section Title: Alias for card-header (use interchangeably)
+                   Used in: Create load sections, load detail sections */
+                .section-title {
+                    @apply text-lg font-semibold text-gray-900 mb-6 pb-3 border-b border-gray-200;
+                }
+
+                /* Subsection Title: Smaller uppercase headings within sections
+                   Used in: Pickup/Delivery subsections in forms */
+                .subsection-title {
+                    @apply text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4;
+                }
+
+                /* ============================================
+                   FORM COMPONENTS
+                   ============================================ */
+
+                /* Form Label: Standard label styling for all inputs
+                   Used in: All form fields across create load, load detail, tracking forms */
+                .form-label {
+                    @apply block text-sm font-medium text-gray-700 mb-2;
+                }
+
+                /* Form Input: Text input, number input, datetime-local, etc.
+                   Used in: Load ID, rate, miles, datetime fields */
+                .form-input {
+                    @apply w-full border border-gray-300 rounded-md px-3 py-2.5 text-[15px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent placeholder:text-gray-400;
+                }
+
+                /* Form Select: Dropdown/select elements
+                   Used in: Broker, carrier, driver, truck, facility dropdowns */
+                .form-select {
+                    @apply w-full border border-gray-300 rounded-md px-3 py-2.5 text-[15px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent;
+                }
+
+                /* Form Textarea: Multi-line text input
+                   Used in: Remarks, notes, description fields */
+                .form-textarea {
+                    @apply w-full border border-gray-300 rounded-md px-3 py-2.5 text-[15px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent placeholder:text-gray-400;
+                }
+
+                /* Form Error: Red error message text below invalid fields
+                   Used in: Validation errors on create load, accessorial forms */
+                .form-error {
+                    @apply text-sm text-red-600 mt-1;
+                }
+
+                /* Helper Text: Small gray help text below inputs
+                   Used in: Field hints, required field notes, format examples */
+                .helper-text {
+                    @apply text-[13px] text-gray-500 mt-1;
+                }
+
+                /* ============================================
+                   BUTTON COMPONENTS
+                   ============================================ */
+
+                /* Base Button: Foundation for all button variants
+                   Do not use directly - use btn-primary, btn-secondary, etc. */
+                .btn {
+                    @apply px-4 py-2.5 text-[15px] font-medium rounded-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer;
+                }
+
+                /* Primary Button: Main action button (green)
+                   Used in: Create Load, Save, Submit actions */
+                .btn-primary {
+                    @apply btn bg-green-600 text-white hover:bg-green-700 focus:ring-green-500 shadow-sm;
+                }
+
+                /* Secondary Button: Alternative action button (gray)
+                   Used in: Handover to Tracking, secondary actions */
+                .btn-secondary {
+                    @apply btn bg-gray-600 text-white hover:bg-gray-700 focus:ring-gray-500 shadow-sm;
+                }
+
+                /* Danger Button: Destructive action button (red)
+                   Used in: Cancel Load, Delete actions */
+                .btn-danger {
+                    @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 shadow-sm;
+                }
+
+                /* Ghost Button: Subtle button with light background
+                   Used in: Cancel, Back, tertiary actions */
+                .btn-ghost {
+                    @apply btn bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-400;
+                }
+
+                /* Small Button: Compact button size
+                   Used in: Dashboard action buttons, inline actions */
+                .btn-sm {
+                    @apply px-3 py-1.5 text-[13px];
+                }
+
+                /* ============================================
+                   BADGE COMPONENTS
+                   ============================================ */
+
+                /* Base Badge: Foundation for status/count badges
+                   Do not use directly - use badge-gray, badge-blue, etc. */
+                .badge {
+                    @apply px-3 py-1.5 text-[13px] font-semibold inline-flex items-center rounded-full;
+                }
+
+                /* Gray Badge: Neutral status (BOOKED, default state)
+                   Used in: Booked loads, neutral status indicators */
+                .badge-gray {
+                    @apply badge bg-gray-100 text-gray-800 border border-gray-300;
+                }
+
+                /* Blue Badge: Info status (DISPATCHED)
+                   Used in: Dispatched loads, informational badges */
+                .badge-blue {
+                    @apply badge bg-blue-100 text-blue-800 border border-blue-300;
+                }
+
+                /* Amber Badge: Warning status (IN_TRANSIT, delays)
+                   Used in: In-transit loads, pending approvals, delays */
+                .badge-amber {
+                    @apply badge bg-amber-100 text-amber-800 border border-amber-300;
+                }
+
+                /* Green Badge: Success status (COMPLETED, approved)
+                   Used in: Completed loads, approved items */
+                .badge-green {
+                    @apply badge bg-green-100 text-green-800 border border-green-300;
+                }
+
+                /* Red Badge: Error/Critical status (CANCELLED)
+                   Used in: Cancelled loads, critical issues */
+                .badge-red {
+                    @apply badge bg-red-100 text-red-800 border border-red-300;
+                }
+
+                /* ============================================
+                   ALERT & MESSAGE COMPONENTS
+                   ============================================ */
+
+                /* Base Alert: Full-width notification box (follows Django admin pattern)
+                   Do not use directly - use alert-success, alert-error, etc. */
+                .alert {
+                    @apply w-full px-4 py-3 rounded-md text-[15px] border;
+                }
+
+                /* Success Alert: Green alert for successful operations
+                   Used in: Operation succeeded messages, confirmations */
+                .alert-success {
+                    @apply alert bg-green-50 text-green-800 border-green-200;
+                }
+
+                /* Error Alert: Red alert for errors and critical issues
+                   Used in: Error messages, validation failures, critical alerts */
+                .alert-error {
+                    @apply alert bg-red-50 text-red-800 border-red-200;
+                }
+
+                /* Warning Alert: Amber alert for warnings and cautions
+                   Used in: Warning messages, pending actions, cautions */
+                .alert-warning {
+                    @apply alert bg-amber-50 text-amber-800 border-amber-200;
+                }
+
+                /* Info Alert: Blue alert for informational messages
+                   Used in: Info messages, general notifications, tips */
+                .alert-info {
+                    @apply alert bg-blue-50 text-blue-800 border-blue-200;
+                }
+
+                /* ============================================
+                   PAGE & SECTION COMPONENTS
+                   ============================================ */
+
+                /* Section: Card wrapper with extra spacing (legacy, prefer .card)
+                   Used in: Older templates, can be replaced with .card */
+                .section {
+                    @apply card p-6 mb-6;
+                }
+
+                /* Page Header: Sticky header spanning full width of main area
+                   Used in: Create load header, form pages with title + action buttons */
+                .page-header {
+                    @apply sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm px-8 py-4;
+                }
+
+                /* ============================================
+                   LIST & TABLE COMPONENTS
+                   ============================================ */
+
+                /* Info List: Vertical stack of items with spacing
+                   Used in: Load detail sidebar, information lists */
+                .info-list {
+                    @apply space-y-3;
+                }
+
+                /* Info Item: Single item in info list with bottom border
+                   Used in: Load detail metadata, key-value pairs */
+                .info-item {
+                    @apply text-[15px] text-gray-700 pb-2 border-b border-gray-100 last:border-0;
+                }
+
+                /* Table Header: Column headers in data tables
+                   Used in: Future table implementations, loads list */
+                .table-header {
+                    @apply bg-gray-50 text-[13px] font-semibold text-gray-700 uppercase tracking-wider;
+                }
+
+                /* Table Cell: Standard cell styling in data tables
+                   Used in: Future table implementations */
+                .table-cell {
+                    @apply text-[15px] text-gray-900;
+                }
+
+                /* ============================================
+                   SPECIALIZED COMPONENTS
+                   ============================================ */
+
+                /* Load Card: Interactive card for displaying loads in lists
+                   Used in: Dispatcher dashboard booked/dispatched load lists */
+                .load-card {
+                    @apply bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 hover:shadow-sm transition-colors transition-shadow;
+                }
+            }
+        </style>
+        <script defer src="{% static 'js/htmx.min.js' %}"></script>
     </head>
-    <body class="bg-gray-100 text-gray-900 antialiased">
+    <body class="bg-gray-50 text-gray-900 antialiased">
         <div class="flex h-screen overflow-hidden">
-            <!-- Sidebar -->
-            <aside class="w-64 bg-white">
+            <!-- Sidebar ( Fixed width)-->
+            <aside class="w-64 bg-gray-50 border-r border-gray-200 flex-shrink-0 transition-all duration-300 ease-in-out">
                 {% include 'partials/sidebar.html' %}
 
             </aside>
 
-            <!-- Main Content Area -->
+            <!--
+            Main Content ( Scrollable internally)
+            flex-1 → takes all remaining horizontal space
+            flex flex-col → vertical layout inside
+            overflow-hidden → does not show the content that overflows outside main area
+            -->
             <div class="flex-1 flex flex-col overflow-hidden">
-                <!-- Page Content -->
-                <main class="flex-1 overflow-y-auto p-6">
+                <!--
+                Long content here will scroll without moving the sidebar
+                flex-1 → fills remaining vertical space
+                overflow-y-auto → vertical scrolling only
+                -->
+                <main class="flex-1 overflow-y-auto">
 
                     {% block content %}{% endblock %}
                 </main>
             </div>
-        </div>  
+        </div>
     </body>
 </html>

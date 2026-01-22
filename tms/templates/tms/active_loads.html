@@ -1,55 +1,57 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto">
-    <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-semibold text-gray-900">Active Loads</h1>
-        <p class="text-sm text-gray-600">Loads in dispatch or transit, ordered by newest.</p>
+    <div class="max-w-6xl mx-auto">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="page-header">Active Loads</h1>
+            <p class="text-[13px] text-gray-600">Loads in dispatch or transit, ordered by newest.</p>
+        </div>
+
+        {% if loads %}
+            <div class="overflow-x-auto bg-white border border-gray-300 rounded-lg">
+                <table class="min-w-full text-sm text-left text-gray-800">
+                    <thead class="bg-gray-100 border-b border-gray-300 text-xs uppercase text-gray-600">
+                        <tr>
+                            <th class="px-4 py-2">Load ID</th>
+                            <th class="px-4 py-2">Status</th>
+                            <th class="px-4 py-2">Broker</th>
+                            <th class="px-4 py-2">Carrier</th>
+                            <th class="px-4 py-2">Driver</th>
+                            <th class="px-4 py-2">From</th>
+                            <th class="px-4 py-2">To</th>
+                            <th class="px-4 py-2 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for load in loads %}
+                            <tr class="border-b border-gray-200 hover:bg-gray-50">
+                                <td class="px-4 py-2 font-medium text-gray-900">{{ load.load_id }}</td>
+                                <td class="px-4 py-2">
+                                    {% if load.status == 'dispatched' %}
+                                        <span class="badge-blue">Dispatched</span>
+                                    {% elif load.status == 'in_transit' %}
+                                        <span class="badge-amber">In Transit</span>
+                                    {% else %}
+                                        {{ load.get_status_display }}
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-2">{{ load.broker.name }}</td>
+                                <td class="px-4 py-2">{{ load.carrier.name|default:"—" }}</td>
+                                <td class="px-4 py-2">{{ load.driver.full_name|default:"—" }}</td>
+                                <td class="px-4 py-2">{{ load.pickup_facility.city }}, {{ load.pickup_facility.state }}</td>
+                                <td class="px-4 py-2">{{ load.delivery_facility.city }}, {{ load.delivery_facility.state }}</td>
+                                <td class="px-4 py-2 text-right">
+                                    <a href="{% url 'load_detail' load.load_id %}"
+                                       class="text-sm text-gray-900 hover:underline">View</a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="text-sm text-gray-600">No active loads.</p>
+        {% endif %}
     </div>
 
-    {% if loads %}
-    <div class="overflow-x-auto bg-white border border-gray-300">
-        <table class="min-w-full text-sm text-left text-gray-800">
-            <thead class="bg-gray-100 border-b border-gray-300 text-xs uppercase text-gray-600">
-                <tr>
-                    <th class="px-4 py-2">Load ID</th>
-                    <th class="px-4 py-2">Status</th>
-                    <th class="px-4 py-2">Broker</th>
-                    <th class="px-4 py-2">Carrier</th>
-                    <th class="px-4 py-2">Driver</th>
-                    <th class="px-4 py-2">From</th>
-                    <th class="px-4 py-2">To</th>
-                    <th class="px-4 py-2 text-right">Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for load in loads %}
-                <tr class="border-b border-gray-200 hover:bg-gray-50">
-                    <td class="px-4 py-2 font-medium text-gray-900">{{ load.load_id }}</td>
-                    <td class="px-4 py-2">
-                        {% if load.status == 'dispatched' %}
-                            <span class="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-900 border border-blue-300">Dispatched</span>
-                        {% elif load.status == 'in_transit' %}
-                            <span class="inline-block px-2 py-1 text-xs bg-amber-100 text-amber-900 border border-amber-300">In Transit</span>
-                        {% else %}
-                            {{ load.get_status_display }}
-                        {% endif %}
-                    </td>
-                    <td class="px-4 py-2">{{ load.broker.name }}</td>
-                    <td class="px-4 py-2">{{ load.carrier.name|default:"—" }}</td>
-                    <td class="px-4 py-2">{{ load.driver.full_name|default:"—" }}</td>
-                    <td class="px-4 py-2">{{ load.pickup_facility.city }}, {{ load.pickup_facility.state }}</td>
-                    <td class="px-4 py-2">{{ load.delivery_facility.city }}, {{ load.delivery_facility.state }}</td>
-                    <td class="px-4 py-2 text-right">
-                        <a href="{% url 'load_detail' load.load_id %}" class="text-sm text-gray-900 hover:underline">View</a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% else %}
-    <p class="text-sm text-gray-600">No active loads.</p>
-    {% endif %}
-</div>
 {% endblock %}

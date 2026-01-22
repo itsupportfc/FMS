@@ -1,0 +1,58 @@
+{% load form_filters %}
+
+<div class="card">
+    <h3 class="card-header">Actions</h3>
+
+    <div class="space-y-6">
+        {% with actions=available_actions %}
+            {% if "handover_to_tracking" in actions %}
+                <form method="post"
+                      action="{% url 'change_status' load.load_id 'handover' %}"
+                      class="space-y-3">
+                    {% csrf_token %}
+                    <label class="form-label">Assign to Tracking Agent</label>
+                    <select name="tracking_agent" required class="form-select">
+                        <option value="">Select agent...</option>
+                        {% for agent in tracking_agents %}<option value="{{ agent.id }}">{{ agent.get_full_name }}</option>{% endfor %}
+                    </select>
+                    <textarea name="instructions"
+                              placeholder="Special instructions (optional)"
+                              class="form-textarea"
+                              rows="2"></textarea>
+                    <button type="submit" class="btn-primary w-full">Handover to Tracking</button>
+                </form>
+            {% endif %}
+
+            {% if "start_transit" in actions %}
+                <form method="post"
+                      action="{% url 'change_status' load.load_id 'start_transit' %}"
+                      class="space-y-3">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-primary w-full">Start Transit</button>
+                </form>
+            {% endif %}
+
+            {% if "mark_delivered" in actions %}
+                <form method="post"
+                      action="{% url 'change_status' load.load_id 'mark_delivered' %}"
+                      class="space-y-3">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-primary w-full">Mark as Delivered</button>
+                </form>
+            {% endif %}
+
+            {% if "complete_load" in actions %}
+                <form method="post"
+                      action="{% url 'change_status' load.load_id 'complete_load' %}"
+                      class="space-y-3">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-secondary w-full">Complete Load</button>
+                </form>
+            {% endif %}
+
+            {% if "cancel_load" in actions %}
+                <button type="button" onclick="showCancelModal()" class="btn-danger w-full">Cancel Load</button>
+            {% endif %}
+        {% endwith %}
+    </div>
+</div>

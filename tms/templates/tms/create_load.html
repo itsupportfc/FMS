@@ -3,118 +3,174 @@
 {% load form_filters %}
 
 {% block content %}
-    {% with input_classes="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200" %}
-        <div class="max-w-5xl mx-auto">
-            <div class="flex items-center justify-between mb-4 md:mb-6">
-                <h1 class="text-2xl font-bold">Create New Load</h1>
-                <p class="text-sm text-gray-500">All fields optional unless marked required by the model.</p>
+    <!-- Full-width header spanning the main content area (right of sidebar) -->
+    <div class="page-header">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Create New Load</h1>
+                <p class="text-sm text-gray-600 mt-1">Complete the form below to create a new load booking</p>
+            </div>
+            <div>
+                <button type="submit" form="create-load-form" class="btn-primary">Create Load</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-5xl mx-auto px-8 pb-10">
+        <form id="create-load-form" method="post" class="space-y-8">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+                <div class="rounded-lg bg-red-50 border border-red-200 px-6 py-4 text-[15px] text-red-700">
+                    {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+                </div>
+            {% endif %}
+
+            <!-- Booking Information -->
+            <div class="card">
+                <h2 class="card-header">Booking Information</h2>
+                <div class="grid gap-6 grid-cols-2">
+                    <div class="space-y-2">
+                        <label for="id_load_id" class="form-label">Load ID</label>
+                        {{ form.load_id|add_class:"form-input" }}
+                        {% if form.load_id.errors %}<p class="form-error">{{ form.load_id.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div class="space-y-2">
+                        <label for="id_broker" class="form-label">
+                            Broker <span class="text-red-600">*</span>
+                        </label>
+                        {{ form.broker|add_class:"form-select" }}
+                        {% if form.broker.errors %}<p class="form-error">{{ form.broker.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div class="space-y-2">
+                        <label for="id_status" class="form-label">Status</label>
+                        {{ form.status|add_class:"form-select" }}
+                        {% if form.status.errors %}<p class="form-error">{{ form.status.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
             </div>
 
-            <form method="post" class="space-y-6 md:space-y-7">
-                {% csrf_token %}
-
-                {% if form.non_field_errors %}
-                    <div class="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-                        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
-                    </div>
-                {% endif %}
-
-                <section class="grid gap-4 md:gap-6 md:grid-cols-2">
+            <!-- Carrier & Assets -->
+            <div class="card">
+                <h2 class="section-title">Carrier & Assets</h2>
+                <div class="grid gap-6 grid-cols-2">
                     <div class="space-y-2">
-                        <label for="id_load_id" class="text-sm font-medium text-gray-700">Load ID</label>
-                        {{ form.load_id|add_class:input_classes }}
-                        {% if form.load_id.errors %}<p class="text-sm text-red-600">{{ form.load_id.errors.0 }}</p>{% endif %}
+                        <label for="id_carrier" class="form-label">Carrier</label>
+                        {{ form.carrier|add_class:"form-select" }}
+                        {% if form.carrier.errors %}<p class="form-error">{{ form.carrier.errors.0 }}</p>{% endif %}
                     </div>
-                    <div class="space-y-2">
-                        <label for="id_broker" class="text-sm font-medium text-gray-700">Broker</label>
-                        {{ form.broker|add_class:input_classes }}
-                        {% if form.broker.errors %}<p class="text-sm text-red-600">{{ form.broker.errors.0 }}</p>{% endif %}
+                    <div id="carrier-assets" class="space-y-6">
+                        <div class="space-y-2">
+                            <label for="id_driver" class="form-label">Driver</label>
+                            {{ form.driver|add_class:"form-select" }}
+                            {% if form.driver.errors %}<p class="form-error">{{ form.driver.errors.0 }}</p>{% endif %}
+                        </div>
+                        <div class="space-y-2">
+                            <label for="id_truck" class="form-label">Truck</label>
+                            {{ form.truck|add_class:"form-select" }}
+                            {% if form.truck.errors %}<p class="form-error">{{ form.truck.errors.0 }}</p>{% endif %}
+                        </div>
                     </div>
-                </section>
+                </div>
+            </div>
 
-                <section class="grid gap-4 md:gap-6 md:grid-cols-2">
-                    <div class="space-y-2">
-                        <label for="id_carrier" class="text-sm font-medium text-gray-700">Carrier</label>
-                        {{ form.carrier|add_class:input_classes }}
-                        {% if form.carrier.errors %}<p class="text-sm text-red-600">{{ form.carrier.errors.0 }}</p>{% endif %}
-                    </div>
-                    <div class="space-y-4">
-                        <div id="carrier-assets" class="space-y-4">
+            <!-- Route Information -->
+            <div class="card">
+                <h2 class="section-title">Route Information</h2>
+                <div class="space-y-6">
+                    <!-- Pickup -->
+                    <div>
+                        <h3 class="subsection-title">Pickup</h3>
+                        <div class="grid gap-6 grid-cols-2">
                             <div class="space-y-2">
-                                <label for="id_driver" class="text-sm font-medium text-gray-700">Driver</label>
-                                {{ form.driver|add_class:input_classes }}
-                                {% if form.driver.errors %}<p class="text-sm text-red-600">{{ form.driver.errors.0 }}</p>{% endif %}
+                                <label for="id_pickup_facility" class="form-label">Facility</label>
+                                {{ form.pickup_facility|add_class:"form-select" }}
+                                {% if form.pickup_facility.errors %}<p class="form-error">{{ form.pickup_facility.errors.0 }}</p>{% endif %}
                             </div>
                             <div class="space-y-2">
-                                <label for="id_truck" class="text-sm font-medium text-gray-700">Truck</label>
-                                {{ form.truck|add_class:input_classes }}
-                                {% if form.truck.errors %}<p class="text-sm text-red-600">{{ form.truck.errors.0 }}</p>{% endif %}
+                                <label for="id_pickup_datetime" class="form-label">Date & Time</label>
+                                {{ form.pickup_datetime|add_class:"form-input" }}
+                                {% if form.pickup_datetime.errors %}<p class="form-error">{{ form.pickup_datetime.errors.0 }}</p>{% endif %}
                             </div>
                         </div>
                     </div>
-                </section>
 
-                <section class="grid gap-4 md:gap-6 md:grid-cols-2">
-                    <div class="space-y-2">
-                        <label for="id_pickup_facility" class="text-sm font-medium text-gray-700">Pickup Facility</label>
-                        {{ form.pickup_facility|add_class:input_classes }}
-                        {% if form.pickup_facility.errors %}<p class="text-sm text-red-600">{{ form.pickup_facility.errors.0 }}</p>{% endif %}
+                    <!-- Delivery -->
+                    <div>
+                        <h3 class="subsection-title">Delivery</h3>
+                        <div class="grid gap-6 grid-cols-2">
+                            <div class="space-y-2">
+                                <label for="id_delivery_facility" class="form-label">Facility</label>
+                                {{ form.delivery_facility|add_class:"form-select" }}
+                                {% if form.delivery_facility.errors %}<p class="form-error">{{ form.delivery_facility.errors.0 }}</p>{% endif %}
+                            </div>
+                            <div class="space-y-2">
+                                <label for="id_delivery_datetime" class="form-label">Date & Time</label>
+                                {{ form.delivery_datetime|add_class:"form-input" }}
+                                {% if form.delivery_datetime.errors %}<p class="form-error">{{ form.delivery_datetime.errors.0 }}</p>{% endif %}
+                            </div>
+                        </div>
                     </div>
-                    <div class="space-y-2">
-                        <label for="id_pickup_datetime" class="text-sm font-medium text-gray-700">Pickup Date &amp; Time</label>
-                        {{ form.pickup_datetime|add_class:input_classes }}
-                        {% if form.pickup_datetime.errors %}<p class="text-sm text-red-600">{{ form.pickup_datetime.errors.0 }}</p>{% endif %}
-                    </div>
-                    <div class="space-y-2">
-                        <label for="id_delivery_facility" class="text-sm font-medium text-gray-700">Delivery Facility</label>
-                        {{ form.delivery_facility|add_class:input_classes }}
-                        {% if form.delivery_facility.errors %}
-                            <p class="text-sm text-red-600">{{ form.delivery_facility.errors.0 }}</p>
-                        {% endif %}
-                    </div>
-                    <div class="space-y-2">
-                        <label for="id_delivery_datetime" class="text-sm font-medium text-gray-700">Delivery Date &amp; Time</label>
-                        {{ form.delivery_datetime|add_class:input_classes }}
-                        {% if form.delivery_datetime.errors %}
-                            <p class="text-sm text-red-600">{{ form.delivery_datetime.errors.0 }}</p>
-                        {% endif %}
-                    </div>
-                </section>
-
-                <section class="grid gap-4 md:gap-5 md:grid-cols-3">
-                    <div class="space-y-2">
-                        <label for="id_rate" class="text-sm font-medium text-gray-700">Rate</label>
-                        {{ form.rate|add_class:input_classes }}
-                        {% if form.rate.errors %}<p class="text-sm text-red-600">{{ form.rate.errors.0 }}</p>{% endif %}
-                    </div>
-                    <div class="space-y-2">
-                        <label for="id_miles" class="text-sm font-medium text-gray-700">Miles</label>
-                        {{ form.miles|add_class:input_classes }}
-                        {% if form.miles.errors %}<p class="text-sm text-red-600">{{ form.miles.errors.0 }}</p>{% endif %}
-                    </div>
-                    <div class="space-y-2">
-                        <label for="id_status" class="text-sm font-medium text-gray-700">Status</label>
-                        {{ form.status|add_class:input_classes }}
-                        {% if form.status.errors %}<p class="text-sm text-red-600">{{ form.status.errors.0 }}</p>{% endif %}
-                    </div>
-                </section>
-
-                <section class="space-y-2">
-                    <label for="id_remarks" class="text-sm font-medium text-gray-700">Remarks</label>
-                    {{ form.remarks|add_class:input_classes }}
-                    {% if form.remarks.errors %}<p class="text-sm text-red-600">{{ form.remarks.errors.0 }}</p>{% endif %}
-                </section>
-
-                <div class="sticky bottom-0 flex justify-end gap-3 bg-white/80 backdrop-blur supports-[backdrop-filter]:backdrop-blur px-4 py-3 border border-gray-200 rounded-md shadow-sm">
-                    <a href="/loads/"
-                       class="px-4 py-2 rounded-md border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</a>
-                    <button type="submit"
-                            class="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                        Save Load
-                    </button>
                 </div>
-            </form>
-        </div>
-    {% endwith %}
+            </div>
+
+            <!-- Financial Details -->
+            <div class="card">
+                <h2 class="section-title">Financial Details</h2>
+                <div class="grid gap-6 grid-cols-3">
+                    <div class="space-y-2">
+                        <label for="id_rate" class="form-label">Rate (USD)</label>
+                        {{ form.rate|add_class:"form-input" }}
+                        {% if form.rate.errors %}<p class="form-error">{{ form.rate.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div class="space-y-2">
+                        <label for="id_miles" class="form-label">Miles</label>
+                        {{ form.miles|add_class:"form-input" }}
+                        {% if form.miles.errors %}<p class="form-error">{{ form.miles.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div class="space-y-2">
+                        <label class="form-label">Rate Per Mile</label>
+                        <div class="form-input">
+                            <span id="rate-per-mile">—</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Information -->
+            <div class="card">
+                <h2 class="section-title">Additional Information</h2>
+                <div class="space-y-2">
+                    {% comment %} <label for="id_remarks" class="form-label">Remarks / Notes</label> {% endcomment %}
+                    {{ form.remarks|add_class:"form-input" }}
+                    {% if form.remarks.errors %}<p class="form-error">{{ form.remarks.errors.0 }}</p>{% endif %}
+                    {% comment %} <p class="helper-text">Add any special instructions or notes for this load</p> {% endcomment %}
+                </div>
+            </div>
+
+        </form>
+    </div>
+
+    <script>
+        // Calculate rate per mile
+        const rateInput = document.getElementById('id_rate');
+        const milesInput = document.getElementById('id_miles');
+        const rpmDisplay = document.getElementById('rate-per-mile');
+
+        function calculateRPM() {
+            const rate = parseFloat(rateInput.value) || 0;
+            const miles = parseFloat(milesInput.value) || 0;
+            if (rate > 0 && miles > 0) {
+                const rpm = (rate / miles).toFixed(2);
+                rpmDisplay.textContent = '$' + rpm;
+            } else {
+                rpmDisplay.textContent = '—';
+            }
+        }
+
+        rateInput?.addEventListener('input', calculateRPM);
+        milesInput?.addEventListener('input', calculateRPM);
+        calculateRPM();
+    </script>
 
 {% endblock %}

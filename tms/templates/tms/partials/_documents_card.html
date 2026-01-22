@@ -1,0 +1,42 @@
+{% load form_filters %}
+
+<div class="card">
+    <h3 class="card-header">Documents</h3>
+
+    {% if load.documents.all %}
+        <div class="space-y-3 mb-6">
+            <p class="helper-text">Uploaded</p>
+            {% for doc in load.documents.all %}
+                <div class="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 hover:bg-gray-100 transition">
+                    <div class="flex-1">
+                        <p class="text-xs font-medium text-gray-900">{{ doc.get_document_type_display }}</p>
+                        <p class="text-xs text-gray-600 mt-0.5">{{ doc.original_filename }}</p>
+                    </div>
+                    <a href="{{ doc.file.url }}" target="_blank" class="btn-ghost btn-sm">Download</a>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="helper-text italic mb-6">No documents uploaded yet.</p>
+    {% endif %}
+
+    <div class="border-t border-gray-200 pt-5">
+        <p class="text-md font-semibold text-gray-900 mb-3">Upload New Document</p>
+        <form method="post"
+              action="{% url 'upload_document' load.load_id %}"
+              enctype="mul
+              tipart/form-data"
+              class="space-y-4">
+            {% csrf_token %}
+            <div>
+                <label class="form-label">Document Type</label>
+                {{ doc_form.document_type|add_class:"form-select" }}
+            </div>
+            <div>
+                <label class="form-label">File</label>
+                {{ doc_form.file|add_class:"form-input" }}
+            </div>
+            <button type="submit" class="btn-secondary w-full">Upload Document</button>
+        </form>
+    </div>
+</div>

@@ -254,7 +254,8 @@ def change_status(request, load_id, action):
     Route different actions to appropriate model methods:
     - handover → load.handover_to_tracking()
     - start_transit → load.start_transit()
-    - complete → load.complete_load()
+    - mark_delivered → load.mark_delivered()
+    - complete_load → load.complete_load()
     - cancel → load.cancel()
 
     WHY thin view: All business logic in model methods. View just:
@@ -302,10 +303,15 @@ def change_status(request, load_id, action):
             load.start_transit()
             messages.success(request, "Load marked as In Transit")
 
-        elif action == "complete":
-            # Model validates required documents
+        elif action == "mark_delivered":
+            # Model validates required documents (POD, BOL)
+            load.mark_delivered()
+            messages.success(request, "Load marked as Delivered.")
+
+        elif action == "complete_load":
+            # Final completion - ready for billing
             load.complete_load()
-            messages.success(request, "Load marked as Complete.")
+            messages.success(request, "Load completed and ready for billing.")
 
         elif action == "cancel":
             # get optional cancellation reason

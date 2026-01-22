@@ -148,14 +148,3 @@ MEDIA_URL = "/media/"
 # in production, media files can be stored on a dedicated CDN, rather than on your own server
 # Example: S3
 MEDIA_ROOT = BASE_DIR / "media"
-
-
-# EMAIL SETTINGS
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = "smtp.gmail.com"
-EMAIL_HOST_USER = "coderrulz71@gmail.com"
-EMAIL_HOST_PASSWORD = "gcgqhapeoyubgjjo"
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-DEFAULT_FROM_EMAIL = "FMS"
-ACCOUNT_EMAIL_SUBJECT_PREFIX = ""

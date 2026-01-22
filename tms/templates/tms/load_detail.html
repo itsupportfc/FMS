@@ -3,605 +3,45 @@
 {% load form_filters %}
 
 {% block content %}
-    {# Full-width sticky header spanning from sidebar to right edge #}
-    <div class="sticky top-0 z-20 bg-white border-b border-gray-300 shadow-md mb-6">
-        <div class="max-w-7xl mx-auto px-6 py-4">
-            <div class="flex items-center justify-between gap-4">
-                <div class="flex items-center gap-4 flex-1">
-                    <div>
-                        <h1 class="text-2xl font-bold text-gray-900">Load ID: {{ load.load_id }}</h1>
-                        <p class="text-sm text-gray-600 mt-1">Created {{ load.created_at|date:"M d, Y H:i" }}</p>
-                    </div>
+    {% include "tms/partials/_load_header.html" %}
 
-                    {# Status Badge - Color-coded #}
-                    {% if load.status == 'booked' %}
-                        <span class="px-3 py-1.5 text-sm font-medium bg-gray-100 text-gray-900 border border-gray-300">
-                            {{ load.get_status_display }}
-                        </span>
-                    {% elif load.status == 'dispatched' %}
-                        <span class="px-3 py-1.5 text-sm font-medium bg-blue-100 text-blue-900 border border-blue-300">
-                            {{ load.get_status_display }}
-                        </span>
-                    {% elif load.status == 'in_transit' %}
-                        <span class="px-3 py-1.5 text-sm font-medium bg-amber-100 text-amber-900 border border-amber-300">
-                            {{ load.get_status_display }}
-                        </span>
-                    {% elif load.status == 'completed' %}
-                        <span class="px-3 py-1.5 text-sm font-medium bg-green-100 text-green-900 border border-green-300">
-                            {{ load.get_status_display }}
-                        </span>
-                    {% elif load.status == 'cancelled' %}
-                        <span class="px-3 py-1.5 text-sm font-medium bg-red-100 text-red-900 border border-red-300">
-                            {{ load.get_status_display }}
-                        </span>
-                    {% endif %}
-                </div>
-
-                {# Save Changes Button - Always accessible #}
-                <button type="submit"
-                        form="load-form"
-                        class="bg-gray-500 text-white py-2 px-6 hover:bg-gray-700 transition whitespace-nowrap font-medium">
-                    Save Changes
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <div class="max-w-7xl mx-auto px-6">
-
-        {# Messages block to display errors, warnings, and success messages #}
+    <div class="max-w-7xl mx-auto px-8 py-6">
         {% if messages %}
-            <div class="mb-6 space-y-2">
+            <div class="mb-6 space-y-3">
                 {% for message in messages %}
-                    <div class="px-4 py-3 border
-                                {% if message.tags == 'error' %}
-                                    bg-red-100 border-red-300 text-red-900
+                    <div class="{% if message.tags == 'error' %}
+                                    alert-error
                                 {% elif message.tags == 'success' %}
-                                    bg-green-100 border-green-300 text-green-900
+                                    alert-success
                                 {% elif message.tags == 'warning' %}
-                                    bg-amber-100 border-amber-300 text-amber-900
+                                    alert-warning
                                 {% else %}
-                                    bg-blue-100 border-blue-300 text-blue-900
+                                    alert-info
                                 {% endif %}">{{ message }}</div>
                 {% endfor %}
             </div>
         {% endif %}
 
-        {# Main 2-column layout: Form (left) + Sidebar (right) - MOBILE FIRST #}
-        {# Mobile: single column, Desktop (lg): left 2/3, right 1/3 #}
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-
-            {# LEFT COLUMN: Load Information Form #}
-            <div class="lg:col-span-2 space-y-6">
-
-                {# Form for editing load (POST to same URL) #}
-                {# WHY: Same view handles display + edit - cleaner than separate views #}
+        <div class="grid grid-cols-3 gap-6">
+            {# LEFT COLUMN: Load Information Form (2/3 width) #}
+            <div class="col-span-2 space-y-6">
                 <form method="post"
                       action="{% url 'load_detail' load.load_id %}"
                       id="load-form">
                     {% csrf_token %}
-                    {# CSRF token WHY: Django security - prevents cross-site request forgery #}
+                    {% include "tms/partials/_load_form_sections.html" %}
 
-                    {# Booking Information Section #}
-                    <div class="bg-white border border-gray-300 shadow-md p-4 md:p-6 mb-4 md:mb-6">
-                        <h2 class="text-xl font-bold text-gray-900 mb-4 pb-2 border-b border-gray-200">Booking Information</h2>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Load ID</label>
-                                {# add_class filter WHY: Applies Tailwind classes to Django form widget #}
-                                {# Defined in tms/templatetags/form_filters.py #}
-                                {{ form.load_id|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                            </div>
-
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Broker</label>
-                                {{ form.broker|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                            </div>
-                        </div>
-                    </div>
-
-                    {# Route Information Section - 2-column layout for better visual scanning #}
-                    <div class="bg-white border border-gray-300 shadow-md p-4 md:p-6 mb-4 md:mb-6">
-                        <h2 class="text-xl font-bold text-gray-900 mb-4 pb-2 border-b border-gray-200">Route Information</h2>
-
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {# Pickup Details #}
-                            <div>
-                                <h3 class="text-base font-bold text-gray-900 mb-3 pb-1 border-b border-gray-200">Pickup</h3>
-                                <div class="space-y-3">
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Pickup Facility</label>
-                                        {{ form.pickup_facility|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                    </div>
-
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Pickup Date/Time</label>
-                                        {# datetime-local input WHY: Native browser picker, better UX #}
-                                        {{ form.pickup_datetime|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                    </div>
-
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Appointment Type</label>
-                                        {{ form.pickup_appointment_type|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {# Delivery Details #}
-                            <div>
-                                <h3 class="text-base font-bold text-gray-900 mb-3 pb-1 border-b border-gray-200">Delivery</h3>
-                                <div class="space-y-3">
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Delivery Facility</label>
-                                        {{ form.delivery_facility|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                    </div>
-
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Delivery Date/Time</label>
-                                        {{ form.delivery_datetime|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                    </div>
-
-                                    <div>
-                                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">Appointment Type</label>
-                                        {{ form.delivery_appointment_type|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {# Financial Information Section #}
-                    <div class="bg-white border border-gray-300 shadow-md p-4 md:p-6 mb-4 md:mb-6">
-                        <h2 class="text-xl font-bold text-gray-900 mb-4 pb-2 border-b border-gray-200">Financial Information</h2>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Miles</label>
-                                {{ form.miles|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                            </div>
-
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Rate ($)</label>
-                                {{ form.rate|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                            </div>
-
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Commission Type</label>
-                                {{ form.commission_type|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                            </div>
-
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Dispatcher amount</label>
-                                {{ form.dispatcher_commission|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                            </div>
-                        </div>
-
-                        {# Auto-calculated RPM (read-only) #}
-                        {# WHY: Helpful metric but not editable (calculated in model.save()) #}
-                        {% if load.rpm %}
-                            <div class="mt-4 p-3 bg-gray-100 border border-gray-300">
-                                <p class="text-sm text-gray-700">
-                                    <span class="font-medium">Rate Per Mile:</span> ${{ load.rpm|floatformat:2 }}
-                                </p>
-                            </div>
-                        {% endif %}
-                    </div>
-
-                    {# Carrier Assignment Section #}
-                    <div class="bg-white border border-gray-300 shadow-md p-4 md:p-6 mb-4 md:mb-6">
-                        <h2 class="text-xl font-bold text-gray-900 mb-4 pb-2 border-b border-gray-200">Carrier Assignment</h2>
-
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Carrier</label>
-                                {# HTMX attributes set in forms.py __init__ #}
-                                {# WHY: When user selects carrier, driver/truck dropdowns update #}
-                                {{ form.carrier|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                            </div>
-
-                            {# Container for HTMX-updated driver/truck dropdowns #}
-                            {# WHY id="carrier-assets": HTMX targets this div to swap content #}
-                            <div id="carrier-assets" class="col-span-2 grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Driver</label>
-                                    {{ form.driver|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                </div>
-
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Truck</label>
-                                    {{ form.truck|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {# Milestone Timestamps Section #}
-                    {# WHY only show if not BOOKED: These timestamps filled during tracking phase #}
-                    {% if load.status != 'booked' %}
-                        <div class="bg-white border border-gray-300 p-6 mb-6">
-                            <h2 class="text-lg font-semibold text-gray-900 mb-4">Milestone Timestamps</h2>
-                            <p class="text-xs text-gray-600 mb-4">
-                                {# Helper text WHY: User knows these are optional manual entries #}
-                                Tracking agent fills these in as load progresses
-                            </p>
-
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Pickup Arrival</label>
-                                    {{ form.pickup_arrival_at|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                </div>
-
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Pickup Departure</label>
-                                    {{ form.pickup_departure_at|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                </div>
-
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Delivery Arrival</label>
-                                    {{ form.delivery_arrival_at|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                </div>
-
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Delivery Departure</label>
-                                    {{ form.delivery_departure_at|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                </div>
-
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Delivered At</label>
-                                    {{ form.delivered_at|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                                </div>
-                            </div>
-                        </div>
-                    {% endif %}
-
-                    {# Remarks Section #}
-                    <div class="bg-white border border-gray-300 p-6 mb-6">
-                        <h2 class="text-lg font-semibold text-gray-900 mb-4">Remarks</h2>
-                        {{ form.remarks|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                    </div>
                 </form>
             </div>
 
-            {# RIGHT COLUMN: Sidebar with Status, Actions, Documents #}
+            {# RIGHT COLUMN: Sidebar (1/3 width) #}
             <div class="space-y-6">
-
-                {# Action Buttons Section #}
-                {# WHY: Uses get_available_actions() to show only relevant buttons #}
-                <div class="bg-white border border-gray-300 shadow-md p-4">
-                    <h3 class="text-base font-bold text-gray-900 mb-3">Actions</h3>
-
-                    {# Get available actions from model method #}
-                    {# WHY: Single source of truth for permissions (defined in models.py) #}
-                    {% comment %} {% with actions=load.get_available_actions user %} {% endcomment %}
-                    {% comment %} Django templates can't pass user as an argument to a method call.{% endcomment %}
-                    {% with actions=available_actions %}
-
-                        {# Handover to Tracking Button #}
-                        {# WHY show only if: user is dispatcher AND load is booked AND can_handover #}
-                        {% if "handover_to_tracking" in actions %}
-                            <form method="post"
-                                  action="{% url 'change_status' load.load_id 'handover' %}"
-                                  class="mb-3">
-                                {% csrf_token %}
-
-                                <label class="block text-xs text-gray-700 mb-1">Assign to Tracking Agent</label>
-                                <select name="tracking_agent"
-                                        required
-                                        class="w-full border border-gray-300 px-2 py-1 text-sm mb-2">
-                                    <option value="">Select agent...</option>
-                                    {% for agent in tracking_agents %}<option value="{{ agent.id }}">{{ agent.get_full_name }}</option>{% endfor %}
-                                </select>
-
-                                <textarea name="instructions"
-                                          placeholder="Special instructions (optional)"
-                                          class="w-full border border-gray-300 px-2 py-1 text-sm mb-2"
-                                          rows="2"></textarea>
-
-                                <button type="submit"
-                                        class="w-full bg-gray-500 text-white py-2 px-4 text-sm hover:bg-gray-700 transition">
-                                    Handover to Tracking
-                                </button>
-                            </form>
-                        {% endif %}
-
-                        {# Start Transit Button #}
-                        {# WHY show only if: user is tracking agent AND load is dispatched #}
-                        {% if "start_transit" in actions %}
-                            <form method="post"
-                                  action="{% url 'change_status' load.load_id 'start_transit' %}"
-                                  class="mb-3">
-                                {% csrf_token %}
-                                <button type="submit"
-                                        class="w-full bg-green-700 text-white py-2 px-4 text-sm hover:bg-green-600 transition">
-                                    Start Transit
-                                </button>
-                            </form>
-                        {% endif %}
-
-                        {# Complete Load Button #}
-                        {# WHY show only if: user is tracking agent AND load is in_transit #}
-                        {% if "complete_load" in actions %}
-                            <form method="post"
-                                  action="{% url 'change_status' load.load_id 'complete' %}"
-                                  class="mb-3">
-                                {% csrf_token %}
-                                <button type="submit"
-                                        class="w-full bg-green-700 text-white py-2 px-4 text-sm hover:bg-green-600 transition">
-                                    Mark as Complete
-                                </button>
-                            </form>
-                        {% endif %}
-
-                        {# Cancel Load Button (with confirmation modal) #}
-                        {# WHY show only if: user is dispatcher AND load not yet in_transit/completed #}
-                        {% if "cancel_load" in actions %}
-                            <button type="button"
-                                    onclick="showCancelModal()"
-                                    class="w-full bg-red-700 text-white py-2 px-4 text-sm hover:bg-red-200 transition">
-                                Cancel Load
-                            </button>
-                        {% endif %}
-
-                    {% endwith %}
-                </div>
-
-                {# Documents Section #}
-                {# WHY always visible: Can upload docs at any stage (including completed for audit) #}
-                <div class="bg-white border border-gray-300 p-4">
-                    <h3 class="text-sm font-semibold text-gray-700 mb-4">Documents</h3>
-
-                    {# Uploaded Documents List #}
-                    {% if load.documents.all %}
-                        <div class="mb-6 space-y-2">
-                            <p class="text-xs text-gray-600 font-medium mb-2">Uploaded:</p>
-                            {% for doc in load.documents.all %}
-                                <div class="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 hover:bg-gray-100 transition">
-                                    <div class="flex-1">
-                                        <p class="text-xs font-medium text-gray-900">{{ doc.get_document_type_display }}</p>
-                                        <p class="text-xs text-gray-600 mt-0.5">{{ doc.original_filename }}</p>
-                                    </div>
-                                    <a href="{{ doc.file.url }}"
-                                       target="_blank"
-                                       class="ml-3 px-3 py-1 text-xs bg-gray-500 text-white border border-gray-500 hover:bg-gray-700 transition whitespace-nowrap">
-                                        ⬇ Download
-                                    </a>
-                                </div>
-                            {% endfor %}
-                        </div>
-                    {% else %}
-                        <p class="text-xs text-gray-600 mb-6 italic">No documents uploaded yet.</p>
-                    {% endif %}
-
-                    {# Upload Document Form #}
-                    {# WHY: Always shown per your requirement (audit trail even after completion) #}
-                    <div class="border-t border-gray-200 pt-4">
-                        <p class="text-sm font-semibold text-gray-900 mb-3">Upload New Document</p>
-                        <form method="post"
-                              action="{% url 'upload_document' load.load_id %}"
-                              enctype="multipart/form-data"
-                              class="space-y-3">
-                            {% csrf_token %}
-
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Document Type</label>
-                                {{ doc_form.document_type|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                            </div>
-
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-1.5">File</label>
-                                {{ doc_form.file|add_class:"w-full border border-gray-300 px-3 py-2 text-sm" }}
-                            </div>
-
-                            <button type="submit"
-                                    class="w-full bg-gray-500 text-white py-2 px-4 text-sm hover:bg-gray-700 transition">
-                                Upload Document
-                            </button>
-                        </form>
-                    </div>
-                </div>
-
-                {# Tracking History #}
-                <div class="bg-white border border-gray-300 shadow-md p-4">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-base font-bold text-gray-900">Tracking History</h3>
-                        {% if "add_tracking_update" in available_actions %}
-                            <a href="{% url 'create_tracking_update' load.load_id %}"
-                               class="px-3 py-1 text-xs bg-gray-500 text-white border border-gray-500 hover:bg-gray-700 transition">Add Update</a>
-                        {% endif %}
-                    </div>
-                    {% if tracking_updates %}
-                        <ul class="space-y-2">
-                            {% for tu in tracking_updates %}
-                                <li class="text-xs text-gray-700 border-b border-gray-200 pb-2">
-                                    <div class="flex justify-between">
-                                        <span>{{ tu.created_at|date:"M d, H:i" }} — {{ tu.tracking_agent.get_full_name }}</span>
-                                        {% if tu.is_delayed %}
-                                            <span class="px-2 py-0.5 text-xs bg-amber-100 text-amber-900 border border-amber-300">Delayed</span>
-                                        {% endif %}
-                                    </div>
-                                    {% if tu.current_location %}<p class="mt-1">Location: {{ tu.current_location }}</p>{% endif %}
-                                    {% if tu.delay_reason %}<p>Reason: {{ tu.get_delay_reason_display }}</p>{% endif %}
-                                    {% if tu.new_eta %}<p>New ETA: {{ tu.new_eta|date:"M d, Y H:i" }}</p>{% endif %}
-                                    {% if tu.notes %}<p class="text-gray-600">{{ tu.notes }}</p>{% endif %}
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% else %}
-                        <p class="text-xs text-gray-600">No tracking updates yet.</p>
-                    {% endif %}
-                </div>
-
-                {# Reschedule Requests #}
-                <div class="bg-white border border-gray-300 shadow-md p-4">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-base font-bold text-gray-900">Reschedule Requests</h3>
-                        {% if "create_reschedule_request" in available_actions %}
-                            <a href="{% url 'create_reschedule_request' load.load_id %}"
-                               class="px-3 py-1 text-xs bg-gray-500 text-white border border-gray-500 hover:bg-gray-700 transition">New Request</a>
-                        {% endif %}
-                    </div>
-                    {% if reschedule_requests %}
-                        <ul class="space-y-2">
-                            {% for rr in reschedule_requests %}
-                                <li class="text-xs text-gray-700 border-b border-gray-200 pb-2">
-                                    <div class="flex justify-between items-center">
-                                        <span>{{ rr.created_at|date:"M d, H:i" }} — {{ rr.created_by.get_full_name }}</span>
-                                        {% if rr.is_fully_approved %}
-                                            <span class="px-2 py-0.5 text-xs bg-green-100 text-green-900 border border-green-300">Approved</span>
-                                        {% else %}
-                                            <span class="px-2 py-0.5 text-xs bg-amber-100 text-amber-900 border border-amber-300">Pending Approval</span>
-                                        {% endif %}
-                                    </div>
-                                    <p class="mt-1">Original: {{ rr.original_appointment|date:"M d, Y H:i" }}</p>
-                                    <p>New: {{ rr.new_appointment|date:"M d, Y H:i" }}</p>
-                                    <p>Reason: {{ rr.get_reason_display }}</p>
-                                    {% if not rr.is_fully_approved %}
-                                        <div class="mt-2 flex gap-2 text-xs text-gray-600">
-                                            <span>
-                                                {% if rr.consignee_approved %}
-                                                    ✓
-                                                {% else %}
-                                                    ○
-                                                {% endif %}
-                                            Consignee</span>
-                                            <span>
-                                                {% if rr.broker_approved %}
-                                                    ✓
-                                                {% else %}
-                                                    ○
-                                                {% endif %}
-                                            Broker</span>
-                                            <span>
-                                                {% if rr.manager_approved %}
-                                                    ✓
-                                                {% else %}
-                                                    ○
-                                                {% endif %}
-                                            Manager</span>
-                                        </div>
-                                        <a href="{% url 'create_reschedule_request' load.load_id %}?edit={{ rr.id }}"
-                                           class="inline-block mt-2 px-3 py-1 text-xs bg-gray-100 text-gray-900 border border-gray-300 hover:bg-gray-200 transition">
-                                            View/Edit Request
-                                        </a>
-                                    {% endif %}
-                                    {% if rr.remarks %}<p class="text-gray-600 mt-1">{{ rr.remarks }}</p>{% endif %}
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% else %}
-                        <p class="text-xs text-gray-600">No reschedule requests yet.</p>
-                    {% endif %}
-                </div>
-
-                {# Accessorial Charges #}
-                <div class="bg-white border border-gray-300 shadow-md p-4">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-base font-bold text-gray-900">Extra Charges</h3>
-                        {% if "add_accessorial" in available_actions %}
-                            <a href="{% url 'create_accessorial' load.load_id %}"
-                               class="px-3 py-1 text-xs bg-gray-500 text-white border border-gray-500 hover:bg-gray-700 transition">
-                                + Add Charge
-                            </a>
-                        {% endif %}
-                    </div>
-
-                    {# List of Charges #}
-                    {% if load.accessorials.all %}
-                        <ul class="space-y-2">
-                            {% for charge in load.accessorials.all %}
-                                <li class="text-xs text-gray-700 border-b border-gray-200 pb-3">
-                                    <div class="flex justify-between items-start gap-2">
-                                        <div class="flex-1">
-                                            <div class="flex items-center gap-2">
-                                                <span class="font-semibold">{{ charge.get_charge_type_display }}</span>
-                                                {% if charge.is_approved %}
-                                                    <span class="px-2 py-0.5 text-xs bg-green-100 text-green-900 border border-green-300 font-semibold">{{ charge.get_approval_status_display }}</span>
-                                                {% else %}
-                                                    <span class="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 border border-gray-300 font-normal">PENDING</span>
-                                                {% endif %}
-                                            </div>
-                                            {% if charge.amount %}
-                                                <p class="mt-1 font-semibold">${{ charge.amount }}</p>
-                                            {% else %}
-                                                <p class="mt-1 text-gray-500 italic">Amount pending manager review</p>
-                                            {% endif %}
-                                            {% if charge.description %}<p class="mt-1 text-gray-600">{{ charge.description }}</p>{% endif %}
-
-                                            {# Show charge-specific details #}
-                                            {% if charge.detention %}
-                                                <p class="mt-1 text-gray-600">
-                                                    <strong>Start:</strong> {{ charge.detention.start_time|date:"M d, H:i" }} |
-                                                    <strong>End:</strong> {{ charge.detention.end_time|date:"M d, H:i" }} |
-                                                    <strong>Hours:</strong> {{ charge.detention.billed_hours }}
-                                                </p>
-                                            {% elif charge.layover %}
-                                                <p class="mt-1 text-gray-600">
-                                                    <strong>Date:</strong> {{ charge.layover.layover_date|date:"M d, Y" }}
-                                                    {% if charge.layover.reason %}| {{ charge.layover.reason }}{% endif %}
-                                                </p>
-                                            {% elif charge.tonu %}
-                                                {% if charge.tonu.reason %}
-                                                    <p class="mt-1 text-gray-600">
-                                                        <strong>Reason:</strong> {{ charge.tonu.reason }}
-                                                    </p>
-                                                {% endif %}
-                                            {% elif charge.lumper %}
-                                                <p class="mt-1 text-gray-600">Lumper services (see documents for receipt)</p>
-                                            {% endif %}
-
-                                            <p class="mt-1 text-xs text-gray-500">Created {{ charge.created_at|date:"M d, Y H:i" }}</p>
-
-                                            {% if not charge.is_approved %}
-                                                <div class="mt-2 flex gap-2 text-xs text-gray-600">
-                                                    <span>
-                                                        {% if charge.manager_approved %}
-                                                            ✓
-                                                        {% else %}
-                                                            ○
-                                                        {% endif %}
-                                                    Manager</span>
-                                                    <span>
-                                                        {% if charge.broker_approved %}
-                                                            ✓
-                                                        {% else %}
-                                                            ○
-                                                        {% endif %}
-                                                    Broker</span>
-                                                </div>
-                                                <a href="{% url 'edit_accessorial' load.load_id charge.id %}"
-                                                   class="inline-block mt-2 px-3 py-1 text-xs bg-gray-100 text-gray-900 border border-gray-300 hover:bg-gray-200 transition">
-                                                    Edit
-                                                </a>
-                                            {% endif %}
-                                        </div>
-                                    </div>
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% else %}
-                        <p class="text-xs text-gray-600">No charges yet.</p>
-                    {% endif %}
-                </div>
-
-                {# Driver HOS (Hours of Service) - Tracking Agent Only #}
-                {% if "view_driver_hos" in available_actions and load.driver %}
-                    <div class="bg-white border border-gray-300 shadow-md p-4">
-                        <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-base font-bold text-gray-900">Driver HOS</h3>
-                            <a href="{% url 'create_duty_log' load.load_id %}"
-                               class="px-3 py-1 text-xs bg-gray-500 text-white border border-gray-500 hover:bg-gray-700 transition">
-                                + Add Duty Log
-                            </a>
-                        </div>
-
-                        <div hx-get="{% url 'driver_hos_summary' load.driver.id %}"
-                             hx-trigger="load"
-                             hx-swap="innerHTML">
-                            <p class="text-xs text-gray-500">Loading HOS data...</p>
-                        </div>
-                    </div>
-                {% endif %}
+                {% include "tms/partials/_actions_card.html" %}
+                {% include "tms/partials/_documents_card.html" %}
+                {% include "tms/partials/_tracking_history_card.html" %}
+                {% include "tms/partials/_reschedule_card.html" %}
+                {% include "tms/partials/_accessorial_card.html" %}
+                {% include "tms/partials/_driver_hos_card.html" %}
 
             </div>
         </div>
@@ -609,8 +49,8 @@
 
     {# Cancel Confirmation Modal #}
     <div id="cancelModal"
-         class="hidden fixed inset-0 bg-gray-500 bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white border border-gray-300 p-6 max-w-md w-full">
+         class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
+        <div class="card max-w-md w-full shadow-lg">
             <h3 class="text-lg font-semibold text-gray-900 mb-4">Confirm Cancellation</h3>
             <p class="text-sm text-gray-700 mb-4">
                 Are you sure you want to cancel this load? This will automatically create a TONU charge for broker approval.
@@ -619,28 +59,17 @@
             <form method="post"
                   action="{% url 'change_status' load.load_id 'cancel' %}">
                 {% csrf_token %}
-
-                <label class="block text-sm text-gray-700 mb-2">Reason (optional):</label>
-                <textarea name="reason"
-                          class="w-full border border-gray-300 px-3 py-2 text-sm mb-4"
-                          rows="3"></textarea>
+                <label class="form-label">Reason (optional):</label>
+                <textarea name="reason" class="form-textarea mb-4" rows="3"></textarea>
 
                 <div class="flex gap-3">
-                    <button type="button"
-                            onclick="hideCancelModal()"
-                            class="flex-1 bg-gray-300 text-gray-900 py-2 px-4 hover:bg-gray-400 transition">
-                        Cancel
-                    </button>
-                    <button type="submit"
-                            class="flex-1 bg-red-700 text-white py-2 px-4 hover:bg-red-600 transition">
-                        Confirm Cancellation
-                    </button>
+                    <button type="button" onclick="hideCancelModal()" class="flex-1 btn-ghost">Cancel</button>
+                    <button type="submit" class="flex-1 btn-danger">Confirm Cancellation</button>
                 </div>
             </form>
         </div>
     </div>
 
-    {# Modal JavaScript #}
     <script>
         function showCancelModal() {
             document.getElementById('cancelModal').classList.remove('hidden');

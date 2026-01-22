@@ -1,0 +1,60 @@
+<div class="card">
+    <div class="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
+        <h3 class="card-header mb-0 pb-0 border-0">Reschedule Requests</h3>
+        {% if "create_reschedule_request" in available_actions %}
+            <a href="{% url 'create_reschedule_request' load.load_id %}"
+               class="btn-secondary btn-sm">New Request</a>
+        {% endif %}
+    </div>
+
+    {% if reschedule_requests %}
+        <ul class="info-list">
+            {% for rr in reschedule_requests %}
+                <li class="info-item">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-medium text-[15px] text-gray-900">{{ rr.created_at|date:"M d, H:i" }} — {{ rr.created_by.get_full_name }}</span>
+                        {% if rr.is_fully_approved %}
+                            <span class="badge-green">Approved</span>
+                        {% else %}
+                            <span class="badge-amber">Pending</span>
+                        {% endif %}
+                    </div>
+                    <p class="text-[13px] text-gray-600">Original: {{ rr.original_appointment|date:"M d, Y H:i" }}</p>
+                    <p class="text-[13px] text-gray-600">New: {{ rr.new_appointment|date:"M d, Y H:i" }}</p>
+                    <p class="text-[13px] text-gray-600">Reason: {{ rr.get_reason_display }}</p>
+
+                    {% if not rr.is_fully_approved %}
+                        <div class="mt-3 flex gap-3 text-[13px] text-gray-600">
+                            <span>
+                                {% if rr.consignee_approved %}
+                                    ✓
+                                {% else %}
+                                    ○
+                                {% endif %}
+                            Consignee</span>
+                            <span>
+                                {% if rr.broker_approved %}
+                                    ✓
+                                {% else %}
+                                    ○
+                                {% endif %}
+                            Broker</span>
+                            <span>
+                                {% if rr.manager_approved %}
+                                    ✓
+                                {% else %}
+                                    ○
+                                {% endif %}
+                            Manager</span>
+                        </div>
+                        <a href="{% url 'create_reschedule_request' load.load_id %}?edit={{ rr.id }}"
+                           class="btn-ghost btn-sm mt-3">View/Edit</a>
+                    {% endif %}
+                    {% if rr.remarks %}<p class="helper-text mt-2">{{ rr.remarks }}</p>{% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="helper-text italic">No reschedule requests yet.</p>
+    {% endif %}
+</div>

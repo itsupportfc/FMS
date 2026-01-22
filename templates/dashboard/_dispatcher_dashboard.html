@@ -1,102 +1,122 @@
+<!-- Sticky Header -->
+<div class="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm">
+    <div class="max-w-[1600px] mx-auto px-8 py-3">
+        <div class="flex items-center justify-between gap-6">
+            <div class="flex items-center gap-4">
+                <div>
+                    <h1 class="text-xl font-bold text-gray-900">Dispatcher Dashboard</h1>
+                    <p class="text-sm text-gray-500">{{ booked_count|add:dispatched_count }} active loads · Updated {% now "H:i" %}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Dispatcher Stats -->
-<div class="grid grid-cols-5 gap-6 mb-6">
-    <div class="bg-white border border-gray-200 p-6">
-        <div class="text-sm font-medium text-gray-600 mb-2">Booked</div>
-        <div class="text-3xl font-bold text-gray-900">{{ booked_count }}</div>
-    </div>
+<div class="max-w-[1600px] mx-auto px-8 py-8">
+    <div class="mb-8"></div>
 
-    <div class="bg-white border border-gray-200 p-6">
-        <div class="text-sm font-medium text-gray-600 mb-2">Dispatched</div>
-        <div class="text-3xl font-bold text-gray-900">{{ dispatched_count }}</div>
-    </div>
-
-    <div class="bg-white border border-gray-200 p-6">
-        <div class="text-sm font-medium text-gray-600 mb-2">Awaiting Handover</div>
-        <div class="text-3xl font-bold text-gray-900">{{ handover_pending_count }}</div>
-    </div>
-
-    <div class="bg-white border border-gray-200 p-6">
-        <div class="text-sm font-medium text-gray-600 mb-2">RC Missing</div>
-        <div class="text-3xl font-bold text-gray-900">{{ rc_missing_count }}</div>
-    </div>
-
-    <div class="bg-white border border-gray-200 p-6">
-        <div class="text-sm font-medium text-gray-600 mb-2">Total Active</div>
-        <div class="text-3xl font-bold text-gray-900">{{ booked_count|add:dispatched_count }}</div>
-    </div>
-</div>
-
-<!-- Dispatcher Bento Grid -->
-<div class="grid grid-cols-2 gap-6">
-    <!-- Left Column - Booked Loads -->
-    <div class="bg-white border border-gray-200 p-6">
-        <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-semibold text-gray-900">Booked Loads (Action Required)</h3>
-            <span class="px-3 py-1 bg-gray-100 border border-gray-300 text-sm text-gray-700">{{ booked_count }} loads</span>
+    <div class="grid grid-cols-5 gap-6 mb-8">
+        <div class="card text-center border-t-4 border-green-500">
+            <div class="text-[13px] font-medium text-gray-500 uppercase tracking-wide mb-2">Booked</div>
+            <div class="text-4xl font-extrabold tracking-tight">{{ booked_count }}</div>
         </div>
-        <div class="space-y-3 max-h-[500px] overflow-y-auto">
-            {% for load in booked_loads %}
-                <div class="border border-gray-200 p-4">
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="text-sm font-medium text-gray-900">{{ load.load_id }}</span>
-                        <span class="text-xs text-gray-500">{{ load.broker.name }}</span>
-                    </div>
-                    <div class="text-sm text-gray-700 mb-3">
-                        <div>From: {{ load.pickup_facility.city }}, {{ load.pickup_facility.state }}</div>
-                        <div>To: {{ load.delivery_facility.city }}, {{ load.delivery_facility.state }}</div>
-                    </div>
-                    <a href="#"
-                       class="block w-full px-4 py-2 bg-gray-100 border border-gray-300 text-sm font-medium text-gray-800 hover:bg-gray-200 transition-colors text-center">
-                        Dispatch Load
-                    </a>
-                </div>
-            {% empty %}
-                <div class="border border-gray-200 p-4 text-center text-sm text-gray-500">No booked loads</div>
-            {% endfor %}
+
+        <div class="card text-center border-t-4 border-blue-500">
+            <div class="text-[13px] font-medium text-gray-500 uppercase tracking-wide mb-2">Dispatched</div>
+            <div class="text-4xl font-extrabold tracking-tight">{{ dispatched_count }}</div>
+        </div>
+
+        <div class="card text-center border-t-4 border-amber-500">
+            <div class="text-[13px] font-medium text-gray-500 uppercase tracking-wide mb-2">Awaiting Handover</div>
+            <div class="text-4xl font-extrabold tracking-tight">{{ handover_pending_count }}</div>
+        </div>
+
+        <div class="card text-center border-t-4 border-red-500">
+            <div class="text-[13px] font-medium text-gray-500 uppercase tracking-wide mb-2">RC Missing</div>
+            <div class="text-4xl font-extrabold tracking-tight">{{ rc_missing_count }}</div>
+        </div>
+
+        <div class="card text-center border-t-4 border-gray-500">
+            <div class="text-[13px] font-medium text-gray-500 uppercase tracking-wide mb-2">Total Active</div>
+            <div class="text-4xl font-extrabold tracking-tight">{{ booked_count|add:dispatched_count }}</div>
         </div>
     </div>
 
-    <!-- Right Column - Dispatched Loads (Handover Pending) -->
-    <div class="bg-white border border-gray-200 p-6">
-        <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-semibold text-gray-900">Dispatched Loads (Handover Pending)</h3>
-            <span class="px-3 py-1 bg-gray-100 border border-gray-300 text-sm text-gray-700">{{ handover_pending_count }} loads</span>
-        </div>
-        <div class="space-y-3 max-h-[500px] overflow-y-auto">
-            {% for load in handover_loads %}
-                <div class="border border-gray-200 p-4">
-                    <div class="flex items-center justify-between mb-3">
-                        <div>
-                            <span class="text-sm font-medium text-gray-900">{{ load.load_id }}</span>
-                            <div class="text-xs text-gray-500 mt-1">Driver: {{ load.driver.full_name }}</div>
+    <!-- Dispatcher Bento Grid -->
+    <div class="grid grid-cols-2 gap-6">
+        <!-- Left Column - Booked Loads -->
+        <div class="card">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold text-gray-900">
+                    Booked Loads
+                    <span class="text-sm font-medium text-amber-600 ml-2">(Action Required)</span>
+                </h3>
+                <span class="badge-gray">{{ booked_count }} loads</span>
+            </div>
+            <div class="space-y-3 max-h-[560px] overflow-y-auto pr-1">
+                {% for load in booked_loads %}
+                    <div class="load-card grid grid-cols-2 gap-3 items-center">
+
+                        <div class="col-span-2 flex justify-between items-center">
+                            <span class="font-semibold text-gray-900">{{ load.load_id }}</span>
+                            <span class="text-[12px] text-gray-500">{{ load.broker.name }}</span>
                         </div>
-                        <span class="px-2 py-1 bg-gray-100 border border-gray-300 text-xs text-gray-700">{{ load.truck }}</span>
+
+                        <div class="col-span-2 text-[14px] text-gray-700">
+                            <span class="font-semibold text-gray-900">FROM</span>
+                            {{ load.pickup_facility.city }}, {{ load.pickup_facility.state }}
+                            →
+
+                            <span class="font-semibold text-gray-900">TO</span>
+                            {{ load.delivery_facility.city }}, {{ load.delivery_facility.state }}
+                        </div>
+
+                        <a href="{% url 'load_detail' load.load_id %}"
+                           class="btn-primary col-span-2 text-center">Dispatch Load</a>
                     </div>
-                    <div class="text-sm text-gray-700 mb-3">
-                        <div>From: {{ load.pickup_facility.city }}, {{ load.pickup_facility.state }}</div>
-                        <div>To: {{ load.delivery_facility.city }}, {{ load.delivery_facility.state }}</div>
-                    </div>
-                    <a href="#"
-                       class="block w-full px-4 py-2 bg-gray-100 border border-gray-300 text-sm font-medium text-gray-800 hover:bg-gray-200 transition-colors text-center">
-                        Handover to Tracking
-                    </a>
-                </div>
-            {% empty %}
-                <div class="border border-gray-200 p-4 text-center text-sm text-gray-500">No loads awaiting handover</div>
-            {% endfor %}
+                {% empty %}
+                    <div class="load-card text-center text-gray-500 italic">No booked loads</div>
+                {% endfor %}
+            </div>
         </div>
-    </div>
-</div>
 
-<!-- Quick Actions Section (no additional data beyond context) -->
-<div class="grid grid-cols-2 gap-6 mt-6">
-    <div class="bg-white border border-gray-200 p-6">
-        <h4 class="text-sm font-semibold text-gray-900 mb-4">Booked Overview</h4>
-        <div class="text-sm text-gray-700">Total booked loads: {{ booked_count }}</div>
-    </div>
+        <!-- Right Column - Dispatched Loads (Handover Pending) -->
+        <div class="card">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">
+                    Dispatched Loads
+                    <span class="text-sm font-medium text-blue-600 ml-2">(Handover Pending)</span>
+                </h3>
+                <span class="badge-blue">{{ handover_pending_count }} loads</span>
+            </div>
+            <div class="space-y-3 max-h-[560px] overflow-y-auto pr-1">
+                {% for load in handover_loads %}
+                    <div class="load-card grid grid-cols-2 gap-3 items-center">
 
-    <div class="bg-white border border-gray-200 p-6">
-        <h4 class="text-sm font-semibold text-gray-900 mb-4">Dispatched Overview</h4>
-        <div class="text-sm text-gray-700">Total dispatched loads: {{ dispatched_count }}</div>
+                        <div class="col-span-2 flex justify-between items-center">
+                            <div>
+                                <span class="font-semibold text-gray-900">{{ load.load_id }}</span>
+                                <div class="text-[12px] text-gray-500 mt-0.5">Driver: {{ load.driver.full_name }}</div>
+                            </div>
+                            <span class="badge-gray">{{ load.truck }}</span>
+                        </div>
+
+                        <div class="col-span-2 text-[14px] text-gray-700">
+                            <span class="font-semibold text-gray-900">FROM</span>
+                            {{ load.pickup_facility.city }}, {{ load.pickup_facility.state }}
+                            →
+                            <span class="font-semibold text-gray-900">TO</span>
+                            {{ load.delivery_facility.city }}, {{ load.delivery_facility.state }}
+                        </div>
+
+                        <a href="{% url 'load_detail' load.load_id %}"
+                           class="btn-secondary col-span-2 text-center">Handover to Tracking</a>
+                    </div>
+                {% empty %}
+                    <div class="load-card text-center text-gray-500 italic">No loads awaiting handover</div>
+                {% endfor %}
+            </div>
+        </div>
     </div>
 </div>

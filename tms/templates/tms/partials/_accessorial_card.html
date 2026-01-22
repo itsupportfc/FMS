@@ -1,0 +1,78 @@
+<div class="card">
+    <div class="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
+        <h3 class="card-header mb-0 pb-0 border-0">Extra Charges</h3>
+        {% if "add_accessorial" in available_actions %}
+            <a href="{% url 'create_accessorial' load.load_id %}"
+               class="btn-secondary btn-sm">Add Charge</a>
+        {% endif %}
+    </div>
+
+    {% if load.accessorials.all %}
+        <ul class="info-list">
+            {% for charge in load.accessorials.all %}
+                <li class="info-item">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-semibold text-[15px] text-gray-900">{{ charge.get_charge_type_display }}</span>
+                        {% if charge.is_approved %}
+                            <span class="badge-green">{{ charge.get_approval_status_display }}</span>
+                        {% else %}
+                            <span class="badge-gray">PENDING</span>
+                        {% endif %}
+                    </div>
+
+                    {% if charge.amount %}
+                        <p class="font-semibold text-[15px] text-gray-900">${{ charge.amount }}</p>
+                    {% else %}
+                        <p class="helper-text italic">Amount pending manager review</p>
+                    {% endif %}
+
+                    {% if charge.description %}<p class="text-[13px] text-gray-600 mt-1">{{ charge.description }}</p>{% endif %}
+
+                    {% if charge.detention %}
+                        <p class="text-[13px] text-gray-600 mt-1">
+                            <strong>Start:</strong> {{ charge.detention.start_time|date:"M d, H:i" }} |
+                            <strong>End:</strong> {{ charge.detention.end_time|date:"M d, H:i" }} |
+                            <strong>Hours:</strong> {{ charge.detention.billed_hours }}
+                        </p>
+                    {% elif charge.layover %}
+                        <p class="text-[13px] text-gray-600 mt-1">
+                            <strong>Date:</strong> {{ charge.layover.layover_date|date:"M d, Y" }}
+                            {% if charge.layover.reason %}| {{ charge.layover.reason }}{% endif %}
+                        </p>
+                    {% elif charge.tonu and charge.tonu.reason %}
+                        <p class="text-[13px] text-gray-600 mt-1">
+                            <strong>Reason:</strong> {{ charge.tonu.reason }}
+                        </p>
+                    {% elif charge.lumper %}
+                        <p class="text-[13px] text-gray-600 mt-1">Lumper services (see documents for receipt)</p>
+                    {% endif %}
+
+                    <p class="helper-text mt-2">Created {{ charge.created_at|date:"M d, Y H:i" }}</p>
+
+                    {% if not charge.is_approved %}
+                        <div class="mt-3 flex gap-3 text-[13px] text-gray-600">
+                            <span>
+                                {% if charge.manager_approved %}
+                                    ✓
+                                {% else %}
+                                    ○
+                                {% endif %}
+                            Manager</span>
+                            <span>
+                                {% if charge.broker_approved %}
+                                    ✓
+                                {% else %}
+                                    ○
+                                {% endif %}
+                            Broker</span>
+                        </div>
+                        <a href="{% url 'edit_accessorial' load.load_id charge.id %}"
+                           class="btn-ghost btn-sm mt-3">Edit</a>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="helper-text italic">No charges yet.</p>
+    {% endif %}
+</div>

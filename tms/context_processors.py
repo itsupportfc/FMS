@@ -10,8 +10,8 @@ def layout_context(request):
             {"label": "Dashboard", "url": "dashboard"},
             {"label": "Create Load", "url": "create_load"},
             {"label": "Loads", "url": "loads_list"},
-            {"label": "Carriers", "url": "carriers_list"},
-            {"label": "Drivers", "url": "drivers_list"},
+            # {"label": "Carriers", "url": "carriers_list"},
+            # {"label": "Drivers", "url": "drivers_list"},
         ]
     elif user.role == "tracking_agent":
         sidebar_items = [

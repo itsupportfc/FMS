@@ -1,0 +1,28 @@
+{% load form_filters %}
+
+<div class="page-header">
+    <div class="flex items-center justify-between gap-6">
+        <div class="flex items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Load ID: {{ load.load_id }}</h1>
+                <p class="text-sm text-gray-600 mt-1">Created {{ load.created_at|date:"M d, Y H:i" }}</p>
+            </div>
+
+            {% if load.status == 'booked' %}
+                <span class="badge-gray">{{ load.get_status_display }}</span>
+            {% elif load.status == 'dispatched' %}
+                <span class="badge-blue">{{ load.get_status_display }}</span>
+            {% elif load.status == 'in_transit' %}
+                <span class="badge-amber">{{ load.get_status_display }}</span>
+            {% elif load.status == 'delivered' %}
+                <span class="badge-green">{{ load.get_status_display }}</span>
+            {% elif load.status == 'completed' %}
+                <span class="badge-gray">{{ load.get_status_display }}</span>
+            {% elif load.status == 'cancelled' %}
+                <span class="badge-red">{{ load.get_status_display }}</span>
+            {% endif %}
+        </div>
+
+        <button type="submit" form="load-form" class="btn-primary">Save Changes</button>
+    </div>
+</div>
