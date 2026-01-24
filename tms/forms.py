@@ -1,17 +1,25 @@
 # forms.py
+from typing import Optional, cast
+
 from django import forms
+from django.db.models import QuerySet
+from django.forms import ModelChoiceField
+from django.utils import timezone
 
 from .models import (
     Accessorial,
-    Document,
     Driver,
     DutyLog,
     Load,
+    LoadDocument,
+    LoadStop,
     RescheduleRequest,
     TrackingUpdate,
     Truck,
+    User,
 )
 
+_DT_LOCAL_FMT = "%Y-%m-%dT%H:%M"
 
 class LoadForm(forms.ModelForm):
     """
@@ -26,30 +34,24 @@ class LoadForm(forms.ModelForm):
 
     # driver = forms.ModelChoiceField(
     #     queryset=Driver.objects.none(),
-    #     required=False,
+    #     # required=False,
     #     empty_label="Select driver",
     # )
 
     # truck = forms.ModelChoiceField(
     #     queryset=Truck.objects.none(),
-    #     required=False,
+    #     # required=False,
     #     empty_label="Select truck",
     # )
 
     class Meta:
         model = Load
         fields = [
-            # broker
+            # broker fields
             "load_id",
             "broker",
-            # pickup
-            "pickup_facility",
-            "pickup_datetime",
-            "pickup_appointment_type",
-            # delivery
-            "delivery_facility",
-            "delivery_datetime",
-            "delivery_appointment_type",
+            "commodity_type",
+            "weight",
             # financials
             "rate",
             "miles",
@@ -59,13 +61,11 @@ class LoadForm(forms.ModelForm):
             "carrier",
             "driver",
             "truck",
-            # "status",
             # Timestamps (for edit view - tracking agent fills these in)
-            "pickup_arrival_at",
-            "pickup_departure_at",
-            "delivery_arrival_at",
-            "delivery_departure_at",
-            "delivered_at",
+            # "dispatched_at",
+            # "delivered_at",
+            # "completed_at",
+            # "cancelled_at",
             # Notes
             "remarks",
         ]
@@ -80,49 +80,18 @@ class LoadForm(forms.ModelForm):
                     "hx-trigger": "change",
                 }
             ),
-            "pickup_datetime": forms.DateTimeInput(
-                attrs={
-                    "type": "datetime-local",  # HTML5 native picker
-                    "step": "60",  # 1-minute intervals (not 1-second)
-                }
-            ),
-            "delivery_datetime": forms.DateTimeInput(
-                attrs={
-                    "type": "datetime-local",
-                    "step": "60",
-                }
-            ),
-            # Facility timestamp fields (filled by tracking agent during transit)
-            "pickup_arrival_at": forms.DateTimeInput(
-                attrs={
-                    "type": "datetime-local",
-                    "step": "60",
-                }
-            ),
-            "pickup_departure_at": forms.DateTimeInput(
-                attrs={
-                    "type": "datetime-local",
-                    "step": "60",
-                }
-            ),
-            "delivery_arrival_at": forms.DateTimeInput(
-                attrs={
-                    "type": "datetime-local",
-                    "step": "60",
-                }
-            ),
-            "delivery_departure_at": forms.DateTimeInput(
-                attrs={
-                    "type": "datetime-local",
-                    "step": "60",
-                }
-            ),
-            "delivered_at": forms.DateTimeInput(
-                attrs={
-                    "type": "datetime-local",
-                    "step": "60",
-                }
-            ),
+            # "dispatched_at": forms.DateTimeInput(
+            #     attrs={"type": "datetime-local", "step": "60"}
+            # ),
+            # "delivered_at": forms.DateTimeInput(
+            #     attrs={"type": "datetime-local", "step": "60"}
+            # ),
+            # "completed_at": forms.DateTimeInput(
+            #     attrs={"type": "datetime-local", "step": "60"}
+            # ),
+            # "cancelled_at": forms.DateTimeInput(
+            #     attrs={"type": "datetime-local", "step": "60"}
+            # ),
             "remarks": forms.Textarea(attrs={"rows": 4}),  # Multi-line text
         }
 
@@ -143,7 +112,7 @@ class LoadForm(forms.ModelForm):
         2. Configure HTMX for carrier filtering
         3. Filter driver/truck querysets based on selected carrier
         """
-        # carrier = kwargs.pop("carrier", None)
+        self.user: Optional[User] = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
 
         # Set placeholder text (UX hints, not styling)
@@ -162,68 +131,122 @@ class LoadForm(forms.ModelForm):
         carrier_id = None
 
         # EDIT Views: instance is there + carrier assigned
-        if self.instance and self.instance.carrier:
+        if self.instance and getattr(self.instance, "carrier", None):
             carrier_id = self.instance.carrier_id
 
         # CREATE Views: self.data exists on POST requests
         elif "carrier" in self.data:
             carrier_id = self.data.get("carrier")
 
+        driver_field = cast(ModelChoiceField, self.fields["driver"])
+        truck_field = cast(ModelChoiceField, self.fields["truck"])
         # Filter driver/truck based on carrier
         if carrier_id:
-            self.fields["driver"].queryset = Driver.objects.filter(  # type: ignore
+            driver_field .queryset = Driver.objects.filter(
                 carrier_id=carrier_id
             )
-            self.fields["truck"].queryset = Truck.objects.filter(carrier_id=carrier_id)  # pyright: ignore[reportAttributeAccessIssue]
+            truck_field.queryset = Truck.objects.filter(carrier_id=carrier_id)
         else:
-            self.fields["driver"].queryset = Driver.objects.none()  # type: ignore
-            self.fields["truck"].queryset = Truck.objects.none()  # type: ignore
+            driver_field .queryset = Driver.objects.none()
+            truck_field.queryset = Truck.objects.none()
 
         # Lock financial fields after IN_TRANSIT
-        if self.instance and self.instance.status in [
-            Load.Status.IN_TRANSIT,
-            Load.Status.DELIVERED,
-            Load.Status.COMPLETED,
-        ]:
+        if (
+            self.instance
+            and self.instance.pk
+            and self.instance.status
+            in [
+                Load.Status.IN_TRANSIT,
+                Load.Status.DELIVERED,
+                Load.Status.COMPLETED,
+            ]
+        ):
             # Add obvious disabled styling
+            disabled_classes = "bg-gray-200 cursor-not-allowed text-gray-600"
+
+            lock_fields = [
+                "load_id",
+                "broker",
+                "rate",
+                "miles",
+                "carrier",
+                "driver",
+                "truck",
+                "dispatcher_commission",
+                "commission_type",
+            ]
+            for f in lock_fields:
+                if f in self.fields:
+                    self.fields[f].disabled = True
+                    self.fields[f].widget.attrs.update({"class": disabled_classes})
+
+        # Optional: role-based disabling
+        # Dispatcher edits most fields; tracking agent should not edit financials/assets generally.
+        if self.user and getattr(self.user, "role", None) == "tracking_agent":
             disabled_classes = "bg-gray-100 cursor-not-allowed text-gray-600"
+            tracker_lock = [
+                "broker",
+                "rate",
+                "miles",
+                "carrier",
+                "driver",
+                "truck",
+                "commission_type",
+                "dispatcher_commission",
+            ]
+            for f in tracker_lock:
+                if f in self.fields:
+                    self.fields[f].disabled = True
+                    self.fields[f].widget.attrs.update({"class": disabled_classes})
 
-            self.fields["rate"].disabled = True
-            self.fields["rate"].widget.attrs.update({"class": disabled_classes})
 
-            self.fields["miles"].disabled = True
-            self.fields["miles"].widget.attrs.update({"class": disabled_classes})
+class LoadStopForm(forms.ModelForm):
+    class Meta:
+        model = LoadStop
+        fields = [
+            "stop_type",
+            "facility",
+            "sequence",
+            "appointment_type",
+            "appt_start",
+            "appt_end",
+            "status",
+            "arrived_at",
+            "departed_at",
+            "reference_number",
+            "pieces",
+            "weight",
+            "special_instructions",
+            "notes",
+        ]
 
-            self.fields["broker"].disabled = True
-            self.fields["broker"].widget.attrs.update({"class": disabled_classes})
+        widgets = {
+            "appt_start": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
+            ),
+            "appt_end": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
+            ),
+            "arrived_at": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
+            ),
+            "departed_at": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
+            ),
+            "special_instructions": forms.Textarea(attrs={"rows": 2}),
+            "notes": forms.Textarea(attrs={"rows": 2}),
+        }
 
-            self.fields["carrier"].disabled = True
-            self.fields["carrier"].widget.attrs.update({"class": disabled_classes})
-
-            self.fields["driver"].disabled = True
-            self.fields["driver"].widget.attrs.update({"class": disabled_classes})
-
-            self.fields["truck"].disabled = True
-            self.fields["truck"].widget.attrs.update({"class": disabled_classes})
-
-            self.fields["dispatcher_commission"].disabled = True
-            self.fields["dispatcher_commission"].widget.attrs.update(
-                {"class": disabled_classes}
-            )
-
-            # lock some other fields also
-            self.fields["load_id"].disabled = True
-            self.fields["load_id"].widget.attrs.update({"class": disabled_classes})
-
-            self.fields["pickup_facility"].disabled = True
-            self.fields["pickup_facility"].widget.attrs.update(
-                {"class": disabled_classes}
-            )
-
-            self.fields["delivery_facility"].disabled = True
-            self.fields["delivery_facility"].widget.attrs.update(
-                {"class": disabled_classes}
-            )
+# Inline formset factory (standard Django approach)
+LoadStopFormSet = forms.inlineformset_factory(
+    parent_model=Load,
+    model=LoadStop,
+    form=LoadStopForm,
+    extra=2,  # show 2 empty stop rows by default
+    can_delete=True,  # allow removing a stop
+    min_num=2,  # REQUIRE at least 2 stops
+    validate_min=True,  # enforce min_num validation
+)
 
 
 class DocumentUploadForm(forms.ModelForm):
@@ -238,7 +261,7 @@ class DocumentUploadForm(forms.ModelForm):
     """
 
     class Meta:
-        model = Document
+        model = LoadDocument
         fields = ["document_type", "file", "description"]
 
         widgets = {
@@ -271,7 +294,7 @@ class TrackingUpdateForm(forms.ModelForm):
             "is_delayed": forms.CheckboxInput(),
             "delay_reason": forms.Select(),
             "new_eta": forms.DateTimeInput(
-                attrs={"type": "datetime-local", "step": "60"}
+                attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
             ),
             "notes": forms.Textarea(
                 attrs={"rows": 3, "placeholder": "Add brief notes..."}
@@ -299,10 +322,10 @@ class RescheduleRequestForm(forms.ModelForm):
         ]
         widgets = {
             "original_appointment": forms.DateTimeInput(
-                attrs={"type": "datetime-local", "step": "60"}
+                attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
             ),
             "new_appointment": forms.DateTimeInput(
-                attrs={"type": "datetime-local", "step": "60"}
+                attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
             ),
             "reason": forms.Select(),
             "consignee_approved": forms.CheckboxInput(),
@@ -313,7 +336,12 @@ class RescheduleRequestForm(forms.ModelForm):
             ),
         }
 
-
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Critical: otherwise mypy/pylance + Django sometimes parse wrongly
+        self.fields["original_appointment"].input_formats = [_DT_LOCAL_FMT]
+        self.fields["new_appointment"].input_formats = [_DT_LOCAL_FMT]
+        
 # ============================================================================
 # ACCESSORIAL FORMS
 # ============================================================================
@@ -363,14 +391,14 @@ class AccessorialForm(forms.ModelForm):
                     "type": "datetime-local",
                     "step": "60",
                     "class": "w-full px-3 py-2 border border-gray-300",
-                }
+                }, format="%Y-%m-%dT%H:%M"
             ),
             "detention_end": forms.DateTimeInput(
                 attrs={
                     "type": "datetime-local",
                     "step": "60",
                     "class": "w-full px-3 py-2 border border-gray-300",
-                }
+                }, format="%Y-%m-%dT%H:%M"
             ),
             "detention_billed_hours": forms.NumberInput(
                 attrs={
@@ -452,7 +480,7 @@ class DutyLogForm(forms.ModelForm):
         ]
         widgets = {
             "start_time": forms.DateTimeInput(
-                attrs={"type": "datetime-local", "step": "60"}
+                attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
             ),
             "current_location": forms.TextInput(
                 attrs={"placeholder": "e.g., I-80 exit 42, IA"}

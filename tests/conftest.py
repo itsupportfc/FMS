@@ -100,7 +100,7 @@ class LoadFactory(DjangoModelFactory):
 
 class DocumentFactory(DjangoModelFactory):
     class Meta:
-        model = tms_models.Document
+        model = tms_models.LoadDocument
 
     load = SubFactory(LoadFactory)
     document_type = "RC"

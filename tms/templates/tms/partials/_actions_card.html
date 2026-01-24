@@ -5,24 +5,47 @@
 
     <div class="space-y-6">
         {% with actions=available_actions %}
+
+            {# Handover #}
             {% if "handover_to_tracking" in actions %}
                 <form method="post"
                       action="{% url 'change_status' load.load_id 'handover' %}"
                       class="space-y-3">
                     {% csrf_token %}
+
                     <label class="form-label">Assign to Tracking Agent</label>
                     <select name="tracking_agent" required class="form-select">
                         <option value="">Select agent...</option>
-                        {% for agent in tracking_agents %}<option value="{{ agent.id }}">{{ agent.get_full_name }}</option>{% endfor %}
+                        {% for agent in tracking_agents %}
+                            <option value="{{ agent.id }}">
+                                {% if agent.get_full_name %}
+                                    {{ agent.get_full_name }}
+                                {% else %}
+                                    {{ agent.username }}
+                                {% endif %}
+                            </option>
+                        {% endfor %}
                     </select>
+
                     <textarea name="instructions"
                               placeholder="Special instructions (optional)"
                               class="form-textarea"
                               rows="2"></textarea>
+
                     <button type="submit" class="btn-primary w-full">Handover to Tracking</button>
                 </form>
+            {% else %}
+                {# Optional UX: if BOOKED but no handover action, show a hint (does not affect logic) #}
+                {% if load.status == "booked" %}
+                    <div class="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                        <p class="text-xs text-gray-600">
+                            Handover will appear once required fields are complete (RC uploaded, carrier/truck/driver assigned, and valid stops).
+                        </p>
+                    </div>
+                {% endif %}
             {% endif %}
 
+            {# Start Transit #}
             {% if "start_transit" in actions %}
                 <form method="post"
                       action="{% url 'change_status' load.load_id 'start_transit' %}"
@@ -32,6 +55,7 @@
                 </form>
             {% endif %}
 
+            {# Mark Delivered #}
             {% if "mark_delivered" in actions %}
                 <form method="post"
                       action="{% url 'change_status' load.load_id 'mark_delivered' %}"
@@ -41,6 +65,7 @@
                 </form>
             {% endif %}
 
+            {# Complete Load #}
             {% if "complete_load" in actions %}
                 <form method="post"
                       action="{% url 'change_status' load.load_id 'complete_load' %}"
@@ -50,9 +75,11 @@
                 </form>
             {% endif %}
 
+            {# Cancel #}
             {% if "cancel_load" in actions %}
                 <button type="button" onclick="showCancelModal()" class="btn-danger w-full">Cancel Load</button>
             {% endif %}
+
         {% endwith %}
     </div>
 </div>

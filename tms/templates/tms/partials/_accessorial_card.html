@@ -28,22 +28,24 @@
 
                     {% if charge.description %}<p class="text-[13px] text-gray-600 mt-1">{{ charge.description }}</p>{% endif %}
 
-                    {% if charge.detention %}
+                    {% if charge.charge_type=="detention" and charge.detention_start %}
                         <p class="text-[13px] text-gray-600 mt-1">
-                            <strong>Start:</strong> {{ charge.detention.start_time|date:"M d, H:i" }} |
-                            <strong>End:</strong> {{ charge.detention.end_time|date:"M d, H:i" }} |
-                            <strong>Hours:</strong> {{ charge.detention.billed_hours }}
+                            <strong>Start:</strong> {{ charge.detention_start|date:"M d, H:i" }} |
+                            <strong>End:</strong> {{ charge.detention_end|date:"M d, H:i" }} |
+                            <strong>Hours:</strong> {{ charge.detention_billed_hours }}
                         </p>
-                    {% elif charge.layover %}
+                    {% elif charge.charge_type=="layover" and charge.layover_start_date %}
                         <p class="text-[13px] text-gray-600 mt-1">
-                            <strong>Date:</strong> {{ charge.layover.layover_date|date:"M d, Y" }}
-                            {% if charge.layover.reason %}| {{ charge.layover.reason }}{% endif %}
+                            <strong>From:</strong> {{ charge.layover_start_date|date:"M d, Y" }}
+                            <strong>To:</strong> {{ charge.layover_end_date|date:"M d, Y" }}
                         </p>
-                    {% elif charge.tonu and charge.tonu.reason %}
-                        <p class="text-[13px] text-gray-600 mt-1">
-                            <strong>Reason:</strong> {{ charge.tonu.reason }}
-                        </p>
-                    {% elif charge.lumper %}
+                    {% elif charge.charge_type=="tonu" %}
+                        {% if charge.description %}
+                            <p class="text-[13px] text-gray-600 mt-1">
+                                <strong>TONU:</strong> {{ charge.description }}
+                            </p>
+                        {% endif %}
+                    {% elif charge.charge_type=="lumper" %}
                         <p class="text-[13px] text-gray-600 mt-1">Lumper services (see documents for receipt)</p>
                     {% endif %}
 

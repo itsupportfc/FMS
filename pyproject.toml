@@ -19,11 +19,27 @@ dependencies = [
 dev = [
     "django-debug-toolbar>=6.1.0",
     "django-extensions>=4.1",
+    "django-stubs>=5.2.9",
+    "django-stubs-ext>=5.2.9",
     "djlint>=1.36.4",
     "factory-boy>=3.3.3",
     "faker>=40.1.0",
+    "mypy>=1.19.1",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "pytest-django>=4.11.1",
     "pytz>=2025.2",
 ]
+
+
+[tool.mypy]
+python_version = "3.13"
+plugins = ["mypy_django_plugin.main"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+check_untyped_defs = true
+disallow_untyped_defs = false
+
+[tool.django-stubs]
+django_settings_module = "config.settings.dev"

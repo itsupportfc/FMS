@@ -42,11 +42,17 @@
                         {{ form.broker|add_class:"form-select" }}
                         {% if form.broker.errors %}<p class="form-error">{{ form.broker.errors.0 }}</p>{% endif %}
                     </div>
+
+                    {# IMPORTANT:
+                       In your new Load model, "status" should NOT be editable on create.
+                       If you removed status from LoadForm fields, this block will safely render nothing.
+                       If you still have it in your form, consider removing it.
+                    #}
                     <div class="space-y-2">
-                        <label for="id_status" class="form-label">Status</label>
-                        {{ form.status|add_class:"form-select" }}
-                        {% if form.status.errors %}<p class="form-error">{{ form.status.errors.0 }}</p>{% endif %}
+                        <label class="form-label">Status</label>
+                        <div class="form-input bg-gray-50 text-gray-700">Pending</div>
                     </div>
+
                 </div>
             </div>
 
@@ -74,60 +80,137 @@
                 </div>
             </div>
 
-            <!-- Route Information -->
+            <!-- Route Information (MULTI-STOP) -->
             <div class="card">
                 <h2 class="section-title">Route Information</h2>
-                <div class="space-y-6">
-                    <!-- Pickup -->
-                    <div>
-                        <h3 class="subsection-title">Pickup</h3>
-                        <div class="grid gap-6 grid-cols-2">
-                            <div class="space-y-2">
-                                <label for="id_pickup_facility" class="form-label">Facility</label>
-                                {{ form.pickup_facility|add_class:"form-select" }}
-                                {% if form.pickup_facility.errors %}<p class="form-error">{{ form.pickup_facility.errors.0 }}</p>{% endif %}
-                            </div>
-                            <div class="space-y-2">
-                                <label for="id_pickup_datetime" class="form-label">Date & Time</label>
-                                {{ form.pickup_datetime|add_class:"form-input" }}
-                                {% if form.pickup_datetime.errors %}<p class="form-error">{{ form.pickup_datetime.errors.0 }}</p>{% endif %}
-                            </div>
-                        </div>
-                    </div>
+                <p class="text-sm text-gray-600 mt-1">
+                    Add at least 2 stops (Pickup + Delivery). For APPT stops, provide at least an appointment start (or a window).
+                </p>
 
-                    <!-- Delivery -->
-                    <div>
-                        <h3 class="subsection-title">Delivery</h3>
-                        <div class="grid gap-6 grid-cols-2">
-                            <div class="space-y-2">
-                                <label for="id_delivery_facility" class="form-label">Facility</label>
-                                {{ form.delivery_facility|add_class:"form-select" }}
-                                {% if form.delivery_facility.errors %}<p class="form-error">{{ form.delivery_facility.errors.0 }}</p>{% endif %}
-                            </div>
-                            <div class="space-y-2">
-                                <label for="id_delivery_datetime" class="form-label">Date & Time</label>
-                                {{ form.delivery_datetime|add_class:"form-input" }}
-                                {% if form.delivery_datetime.errors %}<p class="form-error">{{ form.delivery_datetime.errors.0 }}</p>{% endif %}
-                            </div>
-                        </div>
+                {{ stop_formset.management_form }}
+
+                {% if stop_formset.non_form_errors %}
+                    <div class="rounded-lg bg-red-50 border border-red-200 px-6 py-4 text-[15px] text-red-700 mt-4">
+                        {% for error in stop_formset.non_form_errors %}<p>{{ error }}</p>{% endfor %}
                     </div>
+                {% endif %}
+
+                <div class="space-y-6 mt-6">
+                    {% for stop_form in stop_formset %}
+                        <div class="rounded-xl border border-gray-200 bg-white p-5">
+                            <div class="flex items-center justify-between">
+                                <h3 class="font-semibold text-gray-900">Stop {{ forloop.counter }}</h3>
+                            </div>
+
+                            {% if stop_form.non_field_errors %}
+                                <div class="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-[14px] text-red-700 mt-3">
+                                    {% for error in stop_form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+                                </div>
+                            {% endif %}
+
+                            <div class="grid gap-6 grid-cols-2 mt-4">
+                                <div class="space-y-2">
+                                    <label class="form-label">Stop Type</label>
+                                    {{ stop_form.stop_type|add_class:"form-select" }}
+                                    {% if stop_form.stop_type.errors %}<p class="form-error">{{ stop_form.stop_type.errors.0 }}</p>{% endif %}
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label class="form-label">Facility</label>
+                                    {{ stop_form.facility|add_class:"form-select" }}
+                                    {% if stop_form.facility.errors %}<p class="form-error">{{ stop_form.facility.errors.0 }}</p>{% endif %}
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label class="form-label">Sequence</label>
+                                    {{ stop_form.sequence|add_class:"form-input" }}
+                                    {% if stop_form.sequence.errors %}<p class="form-error">{{ stop_form.sequence.errors.0 }}</p>{% endif %}
+                                    <p class="text-xs text-gray-500">Route order: 1,2,3...</p>
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label class="form-label">Appointment Type</label>
+                                    {{ stop_form.appointment_type|add_class:"form-select" }}
+                                    {% if stop_form.appointment_type.errors %}
+                                        <p class="form-error">{{ stop_form.appointment_type.errors.0 }}</p>
+                                    {% endif %}
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label class="form-label">Appt Start</label>
+                                    {{ stop_form.appt_start|add_class:"form-input" }}
+                                    {% if stop_form.appt_start.errors %}<p class="form-error">{{ stop_form.appt_start.errors.0 }}</p>{% endif %}
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label class="form-label">Appt End</label>
+                                    {{ stop_form.appt_end|add_class:"form-input" }}
+                                    {% if stop_form.appt_end.errors %}<p class="form-error">{{ stop_form.appt_end.errors.0 }}</p>{% endif %}
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label class="form-label">Reference #</label>
+                                    {{ stop_form.reference_number|add_class:"form-input" }}
+                                    {% if stop_form.reference_number.errors %}
+                                        <p class="form-error">{{ stop_form.reference_number.errors.0 }}</p>
+                                    {% endif %}
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label class="form-label">Pieces</label>
+                                    {{ stop_form.pieces|add_class:"form-input" }}
+                                    {% if stop_form.pieces.errors %}<p class="form-error">{{ stop_form.pieces.errors.0 }}</p>{% endif %}
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label class="form-label">Stop Weight</label>
+                                    {{ stop_form.weight|add_class:"form-input" }}
+                                    {% if stop_form.weight.errors %}<p class="form-error">{{ stop_form.weight.errors.0 }}</p>{% endif %}
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label class="form-label">Status</label>
+                                    <div class="form-input bg-gray-50 text-gray-700">Pending</div>
+                                </div>
+
+                                <div class="space-y-2 col-span-2">
+                                    <label class="form-label">Special Instructions</label>
+                                    {{ stop_form.special_instructions|add_class:"form-input" }}
+                                    {% if stop_form.special_instructions.errors %}
+                                        <p class="form-error">{{ stop_form.special_instructions.errors.0 }}</p>
+                                    {% endif %}
+                                </div>
+
+                                <div class="space-y-2 col-span-2">
+                                    <label class="form-label">Notes</label>
+                                    {{ stop_form.notes|add_class:"form-input" }}
+                                    {% if stop_form.notes.errors %}<p class="form-error">{{ stop_form.notes.errors.0 }}</p>{% endif %}
+                                </div>
+                            </div>
+
+                            {% for hidden in stop_form.hidden_fields %}{{ hidden }}{% endfor %}
+                        </div>
+                    {% endfor %}
                 </div>
             </div>
 
             <!-- Financial Details -->
             <div class="card">
                 <h2 class="section-title">Financial Details</h2>
+
                 <div class="grid gap-6 grid-cols-3">
                     <div class="space-y-2">
                         <label for="id_rate" class="form-label">Rate (USD)</label>
                         {{ form.rate|add_class:"form-input" }}
                         {% if form.rate.errors %}<p class="form-error">{{ form.rate.errors.0 }}</p>{% endif %}
                     </div>
+
                     <div class="space-y-2">
                         <label for="id_miles" class="form-label">Miles</label>
                         {{ form.miles|add_class:"form-input" }}
                         {% if form.miles.errors %}<p class="form-error">{{ form.miles.errors.0 }}</p>{% endif %}
                     </div>
+
                     <div class="space-y-2">
                         <label class="form-label">Rate Per Mile</label>
                         <div class="form-input">
@@ -141,10 +224,8 @@
             <div class="card">
                 <h2 class="section-title">Additional Information</h2>
                 <div class="space-y-2">
-                    {% comment %} <label for="id_remarks" class="form-label">Remarks / Notes</label> {% endcomment %}
                     {{ form.remarks|add_class:"form-input" }}
                     {% if form.remarks.errors %}<p class="form-error">{{ form.remarks.errors.0 }}</p>{% endif %}
-                    {% comment %} <p class="helper-text">Add any special instructions or notes for this load</p> {% endcomment %}
                 </div>
             </div>
 

@@ -5,9 +5,32 @@
         <div class="flex items-center gap-4">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">Load ID: {{ load.load_id }}</h1>
-                <p class="text-sm text-gray-600 mt-1">Created {{ load.created_at|date:"M d, Y H:i" }}</p>
+                <p class="text-sm text-gray-600 mt-1">
+                    Created {{ load.created_at|date:"M d, Y H:i" }}
+                    {% if can_edit_stops %}
+                        <span class="ml-2 text-xs text-gray-600">(Stops editable)</span>
+                    {% else %}
+                        <span class="ml-2 text-xs text-gray-600">(Stops locked)</span>
+                    {% endif %}
+                </p>
+
+                {# Optional: quick route summary if stops provided in context #}
+                {% if stops %}
+                    <p class="text-sm text-gray-700 mt-1">
+                        Route:
+                        {% with first=stops|first last=stops|last %}
+                            {% if first and last %}
+                                {{ first.facility.city }}, {{ first.facility.state }}
+                                →
+                                {{ last.facility.city }}, {{ last.facility.state }}
+                                <span class="text-xs text-gray-500">({{ stops|length }} stops)</span>
+                            {% endif %}
+                        {% endwith %}
+                    </p>
+                {% endif %}
             </div>
 
+            {# Status badge #}
             {% if load.status == 'booked' %}
                 <span class="badge-gray">{{ load.get_status_display }}</span>
             {% elif load.status == 'dispatched' %}
@@ -20,6 +43,8 @@
                 <span class="badge-gray">{{ load.get_status_display }}</span>
             {% elif load.status == 'cancelled' %}
                 <span class="badge-red">{{ load.get_status_display }}</span>
+            {% else %}
+                <span class="badge-gray">{{ load.status }}</span>
             {% endif %}
         </div>
 

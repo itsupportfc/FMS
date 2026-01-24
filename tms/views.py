@@ -1,10 +1,13 @@
 from os import access
+from tracemalloc import stop
 from webbrowser import get
 
+from django import dispatch
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.forms import modelformset_factory
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -19,15 +22,18 @@ from .forms import (
     DocumentUploadForm,
     DutyLogForm,
     LoadForm,
+    LoadStopForm,
+    LoadStopFormSet,
     RescheduleRequestForm,
     TrackingUpdateForm,
 )
 from .models import (
     Accessorial,
     Carrier,
-    Document,
     Driver,
     Load,
+    LoadDocument,
+    LoadStop,
     RescheduleRequest,
     TrackingUpdate,
     Truck,
@@ -97,50 +103,115 @@ def dashboard(request):
     return render(request, "dashboard/dashboard.html", context)
 
 
+def _validate_stops_formset(stop_formset):
+    """
+    V1 sanity checks *before saving*:
+    - at least 2 non-deleted stops
+    - at least one pickup and one delivery
+    """
+    errors = []
+    valid_forms = []
+    for f in stop_formset.forms:
+        if not hasattr(f, "cleaned_data"):
+            continue  # skip invalid forms
+        cd = f.cleaned_data
+        if not cd:
+            continue
+        if cd.get("DELETE"):
+            continue  # skip deleted forms
+        # ignore completely empty extra forms
+        if (
+            not cd.get("facility")
+            and not cd.get("stop_type")
+            and not cd.get("sequence")
+        ):
+            continue
+        valid_forms.append(cd)
+
+    if len(valid_forms) < 2:
+        errors.append("At least 2 stops (Pickup and Delivery) are required.")
+
+    has_pickup = any(
+        cd.get("stop_type") == LoadStop.StopType.PICKUP for cd in valid_forms
+    )
+    has_delivery = any(
+        cd.get("stop_type") == LoadStop.StopType.DELIVERY for cd in valid_forms
+    )
+
+    if not has_pickup:
+        errors.append("At least one PICKUP stop is required.")
+    if not has_delivery:
+        errors.append("At least one DELIVERY stop is required.")
+
+    return errors
+
+
 @login_required
 def create_load(request):
     """
-    Create new freight load (dispatcher only).
+    Create new freight load (dispatcher only) + create initial stops (V1 multi-stop).
 
     Workflow:
-    1. GET: Show empty form
-    2. POST: Validate + save → redirect to load_detail
+    1. GET: Show empty LoadForm + Stop formset (at least 2 blank forms)
+    2. POST: Validate LoadForm + Stop formset → save → redirect to load_detail
 
-    WHY login_required: Only authenticated users can create loads.
-    Future: Add @role_required("dispatcher") decorator for stricter control.
+    WHY do stops on create:
+    - Dispatcher should define the route at booking time.
+    - Later, once RC exists, stops will be locked (read-only).
     """
-
-    # carrier = None
 
     if request.user.role != "dispatcher":
         messages.error(request, "Only dispatchers can create loads.")
         return redirect("dashboard")
 
     if request.method == "POST":
-        form = LoadForm(request.POST)
-        if form.is_valid():
-            load = form.save(commit=False)
-            load.dispatcher = request.user
-            # Status defaults to BOOKED (set in model field default)
-            # No need to set it explicitly here
-            load.save()
-            messages.success(request, f"Load {load.load_id} created successfully.")
-            # Redirect to load detail page (PRG pattern: Post-Redirect-Get)
-            # WHY: Prevents duplicate submissions if user refreshes page
-            return redirect("load_detail", load_id=load.load_id)
+        form = LoadForm(request.POST)  # binds the POST data to the parent form.
+        # create a Load object only in memory not in DB, but why?
+        # coz formset needs a parent clas instance, but load may not be created now. so givew a dummy
+        temp_load = Load(dispatcher=request.user)
+        stop_formset = LoadStopFormSet(request.POST, instance=temp_load)
+        if form.is_valid() and stop_formset.is_valid():
+            stop_errors = _validate_stops_formset(stop_formset)
+            if stop_errors:
+                for msg in stop_errors:
+                    form.add_error(None, msg)  # non-field errors
+
+                return render(
+                    request,
+                    "tms/create_load.html",
+                    {"form": form, "stop_formset": stop_formset},
+                )
+
+            with transaction.atomic():
+                load = form.save(commit=False)
+                load.dispatcher = request.user
+                load.save()
+
+                # now assign the real load to formset
+                stop_formset.instance = load
+                stop_formset.save()
+
+                messages.success(request, f"Load {load.load_id} created successfully.")
+                # Redirect to load detail page (PRG pattern: Post-Redirect-Get)
+                # WHY: Prevents duplicate submissions if user refreshes page
+                return redirect("load_detail", load_id=load.load_id)
     else:
         # GET request - show empty form
         form = LoadForm()
+        temp_load = Load(dispatcher=request.user)
+        stop_formset = LoadStopFormSet(instance=temp_load)
 
     # Render template with form
     # WHY: Same template for GET (empty form) and POST (form with errors)
-    return render(request, "tms/create_load.html", {"form": form})
+    return render(
+        request, "tms/create_load.html", {"form": form, "stop_formset": stop_formset}
+    )
 
 
 @login_required
 def load_detail(request, load_id):
     """
-    Display and edit load details.
+    Display and edit load details + show stops
 
     Single view for both:
     - GET: Display current load state + editable form
@@ -149,31 +220,57 @@ def load_detail(request, load_id):
     WHY single view: Reduces code duplication. Edit form looks identical
     to detail view, just with editable fields instead of readonly text.
 
-    Template shows/hides sections based on:
-    - user.role (dispatcher sees different buttons than tracker)
-    - load.status (BOOKED shows handover button, IN_TRANSIT shows complete)
-    - load.can_handover() (disable handover button until preconditions met)
+    V1 Rule:
+    - Stops are editable only if load.can_edit_stops() is True.
+      (Example: BOOKED and RC not uploaded yet.)
+    - Once RC exists (or after DISPATCHED), stops are read-only.
+
     """
     # Get load or 404 if not found
     # WHY get_object_or_404: Better UX than generic 500 error
     load = get_object_or_404(Load, load_id=load_id)
+
+    can_edit_stops = (
+        request.user.role == "dispatcher" and load.status == Load.Status.BOOKED
+    )
 
     if request.method == "POST":
         # Update existing load with form data
         # WHY instance=load: Pre-populates form with current values
         # here also form's __init__ runs
         form = LoadForm(request.POST, instance=load)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Load updated successfully.")
-            # Redirect back to same page (PRG pattern)
-            return redirect("load_detail", load_id=load.load_id)
+
+        if can_edit_stops:
+            stop_formset = LoadStopFormSet(request.POST, instance=load)
+        else:
+            # Stops are locked; ignore stop updates even if posted (security)
+            stop_formset = LoadStopFormSet(instance=load)
+
+        if form.is_valid() and (not can_edit_stops or stop_formset.is_valid()):
+            if not can_edit_stops:
+                form.save()
+                messages.success(request, "Load updated successfully.")
+                # Redirect back to same page (PRG pattern)
+                return redirect("load_detail", load_id=load.load_id)
+
+            # If stops editable, validate V1 stop sanity
+            stop_errors = _validate_stops_formset(stop_formset)
+            if stop_errors:
+                for msg in stop_errors:
+                    messages.error(request, msg)
+            else:
+                with transaction.atomic():
+                    form.save()
+                    stop_formset.save()
+                    messages.success(request, "Load and stops updated successfully.")
+                    return redirect("load_detail", load_id=load.load_id)
     else:
         # GET request: Show form pre-filled with current load data
         # here also form's __init__ runs
         form = LoadForm(instance=load)
-
-    # Document upload form (always shown, even on COMPLETED loads for audit)
+        stop_formset = LoadStopFormSet(instance=load)
+    
+    #  LoadDocument upload form (always shown, even on COMPLETED loads for audit)
     doc_form = DocumentUploadForm()
 
     # Get list of tracking agents for handover dropdown
@@ -185,8 +282,11 @@ def load_detail(request, load_id):
     available_actions = load.get_available_actions(request.user)
 
     # Related activity lists for sidebar/history panels
-    tracking_updates = load.tracking_updates.all()  # type: ignore
-    reschedule_requests = load.reschedule_requests.all()  # type: ignore
+    tracking_updates = load.tracking_updates.all()
+    reschedule_requests = load.reschedule_requests.all()
+
+      # For read-only display
+    stops = load.stops.order_by("sequence")
 
     return render(
         request,
@@ -195,6 +295,9 @@ def load_detail(request, load_id):
             "load": load,
             "form": form,
             "doc_form": doc_form,
+            "stops": stops,
+            "stop_formset": stop_formset,
+            "can_edit_stops": can_edit_stops,  # template uses this to show edit vs read-only UI
             "tracking_agents": tracking_agents,
             "available_actions": available_actions,
             "tracking_updates": tracking_updates,
@@ -208,7 +311,7 @@ def upload_document(request, load_id):
     """
     Upload document to load (any user, any status).
 
-    WHY separate view: Document upload is a side action, not part of
+    WHY separate view:  LoadDocument upload is a side action, not part of
     main load edit workflow. Keeps load_detail() view cleaner.
 
     WHY allow upload on COMPLETED loads: May need to add POD later,
@@ -227,7 +330,7 @@ def upload_document(request, load_id):
             # WHY: Form doesn't have load field (set from URL parameter)
             doc.load = load
             # Set original filename from uploaded file
-            # WHY: Already done in Document.save() but explicit is better
+            # WHY: Already done in  LoadDocument.save() but explicit is better
             if doc.file and not doc.original_filename:
                 doc.original_filename = doc.file.name
 
@@ -246,7 +349,6 @@ def upload_document(request, load_id):
 
 
 @login_required
-# @require_POST
 def change_status(request, load_id, action):
     """
     Handle status transition actions.
@@ -468,7 +570,7 @@ def create_reschedule_request(request, load_id):
         return redirect("load_detail", load_id=load.load_id)
 
     # Prefill values
-    latest_update = load.tracking_updates.first()  # type: ignore
+    latest_update = load.tracking_updates.first()
     initial = {
         "original_appointment": load.delivery_datetime,
         "new_appointment": latest_update.new_eta if latest_update else None,

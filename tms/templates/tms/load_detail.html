@@ -25,6 +25,7 @@
         <div class="grid grid-cols-3 gap-6">
             {# LEFT COLUMN: Load Information Form (2/3 width) #}
             <div class="col-span-2 space-y-6">
+                {% include "tms/partials/_stops_card.html" %}
                 <form method="post"
                       action="{% url 'load_detail' load.load_id %}"
                       id="load-form">

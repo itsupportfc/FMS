@@ -1,6 +1,9 @@
+from typing import TYPE_CHECKING
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
+from django.db.models import Manager
 from django.utils import timezone
 
 User = get_user_model()
@@ -208,7 +211,7 @@ class Truck(BaseModel):
         ]
 
     def __str__(self):
-        return f"{self.truck_number} ({self.get_equipment_type_display()})"  # type: ignore
+        return f"{self.truck_number} ({self.get_equipment_type_display()})"
 
 
 class Driver(BaseModel):
@@ -268,18 +271,70 @@ class Driver(BaseModel):
         return f"{self.first_name} {self.last_name}"
 
 
-class Document(BaseModel):
-    """Uploaded document."""
+class BaseDocument(BaseModel):
+    """Abstract base model for documents."""
 
-    DOCUMENT_TYPE_CHOICES = [
-        ("RC", "Rate Confirmation"),
-        ("BOL", "Bill of Lading"),
-        ("POD", "Proof of Delivery"),
-        ("DETENTION", "Detention"),
-        ("LUMPER", "Lumper"),
-        ("TONU", "Truck Order Not Used"),
-        ("OTHERS", "Others"),
-    ]
+    file = models.FileField(upload_to="documents/%Y/%m/%d/")
+    original_filename = models.CharField(max_length=255, blank=True)
+    description = models.TextField(blank=True)
+
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploaded_documents",
+    )
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        if self.file and not self.original_filename:
+            self.original_filename = self.file.name
+        super().save(*args, **kwargs)
+
+
+class CarrierDocument(BaseDocument):
+    """LoadDocument related to a Carrier."""
+
+    class DocumentType(models.TextChoices):
+        W9 = "W9", "W9"
+        INSURANCE_COI = "INSURANCE_COI", "Insurance (COI)"
+        AUTHORITY = "AUTHORITY", "MC / Authority Letter"
+        ACH = "ACH", "ACH / Banking Form"
+        LOR = "LOR", "Letter of Reference"
+        OTHER = "OTHER", "Other"
+
+    carrier = models.ForeignKey(
+        "Carrier", on_delete=models.CASCADE, related_name="documents"
+    )
+    document_type = models.CharField(
+        max_length=30,
+        choices=DocumentType.choices,
+        default=DocumentType.OTHER,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["carrier", "document_type"],
+                name="unique_document_per_carrier_and_type",
+            )
+        ]
+
+
+class LoadDocument(BaseDocument):
+    """LoadDocument related to a Load."""
+
+    class DocumentType(models.TextChoices):
+        RC = "RC", "Rate Confirmation"
+        BOL = "BOL", "Bill of Lading"
+        POD = "POD", "Proof of Delivery"
+        DETENTION = "DETENTION", "Detention"
+        LUMPER = "LUMPER", "Lumper"
+        TONU = "TONU", "Truck Order Not Used"
+        OTHER = "OTHER", "Other"
 
     # NEW: Define which types are ALWAYS required
     REQUIRED_FOR_COMPLETION = ["POD", "BOL"]  # Business rule in one place
@@ -288,29 +343,29 @@ class Document(BaseModel):
     load = models.ForeignKey("Load", on_delete=models.CASCADE, related_name="documents")
     document_type = models.CharField(
         max_length=20,
-        choices=DOCUMENT_TYPE_CHOICES,
-        default="OTHERS",
+        choices=DocumentType.choices,
+        default=DocumentType.OTHER,
     )
 
     # File
-    file = models.FileField(upload_to="documents/%Y/%m/%d/")
-    original_filename = models.CharField(max_length=255)
+    # file = models.FileField(upload_to="documents/%Y/%m/%d/")
+    # original_filename = models.CharField(max_length=255)
 
     # Metadata
-    description = models.TextField(blank=True)
+    # description = models.TextField(blank=True)
 
     # is_required_for_completion = models.BooleanField(
     #     default=False, help_text="Document required to mark load as complete"
     # )
 
-    def save(self, *args, **kwargs):
-        """Auto-populate original_filename from uploaded file if not set."""
-        if self.file and not self.original_filename:
-            self.original_filename = self.file.name
-        super().save(*args, **kwargs)
+    # def save(self, *args, **kwargs):
+    #     """Auto-populate original_filename from uploaded file if not set."""
+    #     if self.file and not self.original_filename:
+    #         self.original_filename = self.file.name
+    #     super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.load.load_id} - {self.get_document_type_display()} ({self.original_filename})"  # type: ignore
+        return f"{self.load.load_id} - {self.document_type.label} ({self.original_filename})"
 
 
 class Accessorial(BaseModel):
@@ -407,22 +462,192 @@ class Accessorial(BaseModel):
         return f"{self.charge_type} {self.load.load_id}"
 
 
+class LoadStop(BaseModel):
+    """
+    Individual stop on a multi-stop load route.
+    """
+
+    class StopType(models.TextChoices):
+        PICKUP = "pickup", "Pickup"
+        DELIVERY = "delivery", "Delivery"
+
+    class StopStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        # ARRIVED = "arrived", "Arrived"
+        # IN_PROGRESS = "in_progress", "Loading/Unloading"
+        COMPLETED = "completed", "Completed"
+        SKIPPED = "skipped", "Skipped"
+
+    load = models.ForeignKey("Load", on_delete=models.CASCADE, related_name="stops")
+    facility = models.ForeignKey(
+        "Facility", on_delete=models.PROTECT, related_name="load_stops"
+    )
+    stop_type = models.CharField(
+        max_length=10, choices=StopType.choices, help_text="Pickup or Delivery"
+    )
+    sequence = models.PositiveIntegerField(
+        help_text="Route order: 1,2,3 ..(important for routing)"
+    )
+
+    # Appointment (Compatibility + Future)
+    # appointment_datetime = models.DateTimeField(
+    #     null=True,
+    #     blank=True,
+    #     help_text="(Legacy/compat) Single appointment datetime if not using a window",
+    # )
+    appt_start = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Appointment window start time (preferred for real ops)",
+    )
+    appt_end = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Appointment window end time (preferred for real ops)",
+    )
+    appointment_type = models.CharField(
+        max_length=10,
+        choices=[
+            ("appt", "Appointment"),
+            ("fcfs", "First Come First Serve"),
+        ],
+        default="appt",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=StopStatus.choices,
+        default=StopStatus.PENDING,
+    )
+
+    arrived_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When truck physically arrived at this stop",
+    )
+    departed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When truck physically departed this stop",
+    )
+
+    # Optional per-stop shipment identifiers / quantities (very common in multi-stop)
+    reference_number = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="PO#, BOL#, Delivery#, etc. specific to this stop",
+    )
+    pieces = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Pieces/pallets for this stop only",
+    )
+    weight = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Weight for this stop only",
+    )
+
+    special_instructions = models.TextField(
+        blank=True,
+        help_text="Dock#, gate code, contact name, check-in process, etc.",
+    )
+
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["load", "sequence"], name="unique_stop_sequence"
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.load.load_id} - Stop {self.sequence}"
+            f" ({self.get_stop_type_display()}: {self.facility.name})"
+        )
+
+    def clean(self):
+        super().clean()
+        # squence must start from 1
+        if self.sequence and self.sequence < 1:
+            raise ValidationError({"sequence": "Sequence must be 1 or greater."})
+        # appt window
+        if self.appt_start and self.appt_end:
+            if self.appt_start > self.appt_end:
+                raise ValidationError(
+                    {"appt_end": "Appointment end must be after start time."}
+                )
+        # Arrival and Departure logic
+        if self.arrived_at and self.departed_at:
+            if self.arrived_at >= self.departed_at:
+                raise ValidationError(
+                    {"departed_at": "Departure time must be after arrival time."}
+                )
+
+        # If APPT, strongly recommended to have at least appt_start (V1 rule)
+        if self.appointment_type == "appt":
+            if not self.appt_start and not self.appt_end:
+                raise ValidationError(
+                    {
+                        "appt_start": "For APPT stops, provide at least appt_start (or a window)."
+                    }
+                )
+
+    @property
+    def is_completed(self):
+        return self.status == self.StopStatus.COMPLETED
+
+    @property
+    def is_skipped(self):
+        return self.status == self.StopStatus.SKIPPED
+
+    @property
+    def duration_at_facility(self):
+        """Duration truck spent at this stop (arrival to departure)."""
+        if self.arrived_at and self.departed_at:
+            return self.departed_at - self.arrived_at
+        return None
+
+    def mark_completed(self, departure_time=None):
+        """
+        V1 convenience. No state machine needed.
+        """
+        self.status = self.StopStatus.COMPLETED
+        if departure_time:
+            # if provided
+            self.departed_at = departure_time
+        elif self.arrived_at and not self.departed_at:
+            # if already arrived, set departed_at to now
+            self.departed_at = timezone.now()
+        self.save(update_fields=["status", "departed_at", "updated_at"])
+
+    def mark_skipped(self):
+        """
+        V1 convenience. No state machine needed.
+        """
+        self.status = self.StopStatus.SKIPPED
+        self.save(update_fields=["status", "updated_at"])
+
+
 class Load(BaseModel):
     """
     Freight load - the core business entity.
     Check for completeness before handover to tracking.
     """
 
+    if TYPE_CHECKING:
+        stops: Manager["LoadStop"]
+        documents: Manager["LoadDocument"]
+
     class Status(models.TextChoices):
         BOOKED = "booked", "Booked"
         DISPATCHED = "dispatched", "Dispatched"
-        # AT_PICKUP = "at_pickup", "At Pickup"
         IN_TRANSIT = "in_transit", "In Transit"
-        # AT_DELIVERY = "at_delivery", "At Delivery"
         DELIVERED = "delivered", "Delivered"
         COMPLETED = "completed", "Completed"
         CANCELLED = "cancelled", "Cancelled"
-        # TONU = "tonu", "TONU (Truck Ordered Not Used)"
 
     class PaymentMethod(models.TextChoices):
         PERCENTAGE = "percentage", "Percentage of Rate"
@@ -436,6 +661,7 @@ class Load(BaseModel):
         verbose_name="Broker Load ID",
     )
 
+    # === COMMODITY INFO (Load-level) ===
     commodity_type = models.CharField(max_length=100, blank=True, null=True)
     weight = models.PositiveIntegerField(
         blank=True,
@@ -444,7 +670,6 @@ class Load(BaseModel):
 
     # Relationships
     broker = models.ForeignKey(Broker, on_delete=models.PROTECT, related_name="loads")
-
     carrier = models.ForeignKey(
         Carrier,
         on_delete=models.PROTECT,
@@ -471,35 +696,35 @@ class Load(BaseModel):
     )
 
     # Pickup Information (address stored in Facility model)
-    pickup_facility = models.ForeignKey(
-        Facility,
-        on_delete=models.PROTECT,
-        related_name="pickup_loads",
-        help_text="Shipper location - contains address details",
-    )
-    # pickup_date = models.DateField()
-    pickup_datetime = models.DateTimeField(null=True, blank=True)
-    pickup_appointment_type = models.CharField(
-        max_length=10,
-        choices=[("appt", "Appointment"), ("fcfs", "First Come First Serve")],
-        default="appt",
-        blank=True,
-    )
+    # pickup_facility = models.ForeignKey(
+    #     Facility,
+    #     on_delete=models.PROTECT,
+    #     related_name="pickup_loads",
+    #     help_text="Shipper location - contains address details",
+    # )
+    # # pickup_date = models.DateField()
+    # pickup_datetime = models.DateTimeField(null=True, blank=True)
+    # pickup_appointment_type = models.CharField(
+    #     max_length=10,
+    #     choices=[("appt", "Appointment"), ("fcfs", "First Come First Serve")],
+    #     default="appt",
+    #     blank=True,
+    # )
 
-    # Delivery Information (address stored in Facility model)
-    delivery_facility = models.ForeignKey(
-        Facility,
-        on_delete=models.PROTECT,
-        related_name="delivery_loads",
-        help_text="Receiver/consignee location - contains address details",
-    )
-    delivery_datetime = models.DateTimeField(null=True, blank=True)
-    delivery_appointment_type = models.CharField(
-        max_length=10,
-        choices=[("appt", "Appointment"), ("fcfs", "First Come First Serve")],
-        default="appt",
-        blank=True,
-    )
+    # # Delivery Information (address stored in Facility model)
+    # delivery_facility = models.ForeignKey(
+    #     Facility,
+    #     on_delete=models.PROTECT,
+    #     related_name="delivery_loads",
+    #     help_text="Receiver/consignee location - contains address details",
+    # )
+    # delivery_datetime = models.DateTimeField(null=True, blank=True)
+    # delivery_appointment_type = models.CharField(
+    #     max_length=10,
+    #     choices=[("appt", "Appointment"), ("fcfs", "First Come First Serve")],
+    #     default="appt",
+    #     blank=True,
+    # )
 
     # Financial
     miles = models.PositiveIntegerField(
@@ -564,26 +789,26 @@ class Load(BaseModel):
         blank=True,
         help_text="When assigned to carrier/truck/driver",
     )
-    pickup_arrival_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When truck arrived at pickup facility",
-    )
-    pickup_departure_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When truck departed pickup facility",
-    )
-    delivery_arrival_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When truck arrived at delivery facility",
-    )
-    delivery_departure_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When truck departed delivery facility",
-    )
+    # pickup_arrival_at = models.DateTimeField(
+    #     null=True,
+    #     blank=True,
+    #     help_text="When truck arrived at pickup facility",
+    # )
+    # pickup_departure_at = models.DateTimeField(
+    #     null=True,
+    #     blank=True,
+    #     help_text="When truck departed pickup facility",
+    # )
+    # delivery_arrival_at = models.DateTimeField(
+    #     null=True,
+    #     blank=True,
+    #     help_text="When truck arrived at delivery facility",
+    # )
+    # delivery_departure_at = models.DateTimeField(
+    #     null=True,
+    #     blank=True,
+    #     help_text="When truck departed delivery facility",
+    # )
     delivered_at = models.DateTimeField(
         null=True,
         blank=True,
@@ -613,7 +838,52 @@ class Load(BaseModel):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.load_id} - {self.get_status_display()}"  # type: ignore
+        return f"{self.load_id} - {self.Status(self.status).label}"
+
+    # =========================================================================
+    # MULTI-STOP CONVENIENCE PROPERTIES (expects LoadStop model to exist)
+    # =========================================================================
+
+    @property
+    def first_pickup(self):
+        return self.stops.filter(stop_type="pickup").order_by("sequence").first()
+
+    @property
+    def last_delivery(self):
+        return self.stops.filter(stop_type="delivery").order_by("-sequence").first()
+
+    @property
+    def origin(self):
+        first = self.first_pickup
+        if first:
+            return f"{first.facility.city}, {first.facility.state}"
+        return None
+
+    @property
+    def destination(self):
+        last = self.last_delivery
+        if last:
+            return f"{last.facility.city}, {last.facility.state}"
+        return None
+
+    def get_route_summary(self):
+        stops = self.stops.order_by("sequence")
+        if not stops.exists():
+            return "No routes defined"
+        locations = [f"{stop.facility.city}, {stop.facility.state}" for stop in stops]
+
+        return " → ".join(locations)
+
+    def get_total_stops_count(self):
+        return self.stops.count()
+
+    def get_completed_stops_count(self):
+        return self.stops.filter(status=LoadStop.StopStatus.COMPLETED).count()
+
+    def is_multi_stop(self):
+        return self.get_total_stops_count() > 2
+    
+
 
     # ============================================================================
     # STATUS WORKFLOW METHODS
@@ -657,7 +927,9 @@ class Load(BaseModel):
         This is a business rule - loads can't be dispatched without broker approval.
         Separating this check makes it reusable and testable.
         """
-        return self.documents.filter(document_type="RC").exists()
+        return self.documents.filter(
+            document_type=LoadDocument.DocumentType.RC
+        ).exists()
 
     def can_handover(self):
         """
@@ -666,18 +938,33 @@ class Load(BaseModel):
         WHY: Prevents UI from showing "Handover" button when preconditions aren't met.
         Used in template: {% if load.can_handover %}<button>Handover</button>{% endif %}
 
-        Business Rules:
-        - Must be in BOOKED status (not already dispatched)
-        - Must have RC document (broker confirmed the rate)
-        - Must have carrier/truck/driver assigned (physical assets ready)
+        V1 handover rules:
+        - BOOKED
+        - RC uploaded
+        - carrier/truck/driver assigned
+        - stops exist
+        - for APPT stops: must have appt_start or appt_end
         """
-        return (
+        basic_checks = (
             self.status == self.Status.BOOKED
             and self.has_rate_confirmation()
             and self.carrier is not None
             and self.truck is not None
             and self.driver is not None
         )
+
+        if not basic_checks:
+            return False
+
+        if not self.stops.exists():
+            return False
+
+        for stop in self.stops.all():
+            if stop.appointment_type == "appt":
+                if not (stop.appt_start or stop.appt_end):
+                    return False
+
+        return True
 
     def get_available_actions(self, user):
         """
@@ -819,6 +1106,22 @@ class Load(BaseModel):
             errors.append("Rate Confirmation document is missing.")
         if not self.carrier or not self.truck or not self.driver:
             errors.append("Carrier, Truck, and Driver must be assigned.")
+
+        # require stops
+        if not self.stops.exists():
+            errors.append("At least 2 stops must be defined for the load.")
+
+        # Validate APPT stops have appointment window
+        if self.stops.exists():
+            for stop in self.stops.all():
+                if stop.appointment_type == "appt" and not (
+                    stop.appt_start or stop.appt_end
+                ):
+                    errors.append(
+                        "All APPT stops must have at least appt_start (or a window)."
+                    )
+                    break
+
         if errors:
             raise ValueError("Cannot handover load: " + "; ".join(errors))
 
@@ -864,7 +1167,6 @@ class Load(BaseModel):
         # 1. validate pickup_arrival_at is set?
         self._transition(
             new_status=self.Status.IN_TRANSIT,
-            pickup_departure_at=timezone.now(),
         )
 
     @transaction.atomic
@@ -888,21 +1190,29 @@ class Load(BaseModel):
         if self.status != self.Status.IN_TRANSIT:
             raise ValueError("Load is not in IN_TRANSIT status.")
 
+        # Multi-stop completion check (delivery stops must be completed or skipped)
+        delivery_stops = self.stops.filter(stop_type=LoadStop.StopType.DELIVERY)
+        if delivery_stops.exists():
+            incomplete_stops = delivery_stops.exclude(
+                status__in=[LoadStop.StopStatus.COMPLETED, LoadStop.StopStatus.SKIPPED]
+            )
+            if incomplete_stops.exists():
+                raise ValueError(
+                    "Cannot mark as delivered. All delivery stops must be completed or skipped."
+                )
+
         # Check required documents (POD, BOL)
         missing_types = []
-        for doc_type in Document.REQUIRED_FOR_COMPLETION:
+        for doc_type in LoadDocument.REQUIRED_FOR_COMPLETION:
             if not self.documents.filter(document_type=doc_type).exists():
-                missing_types.append(
-                    dict(Document.DOCUMENT_TYPE_CHOICES).get(doc_type, doc_type)
-                )
+                missing_types.append(LoadDocument.DocumentType(doc_type).label)
         if missing_types:
             raise ValueError(
                 f"Cannot mark as delivered. These documents are missing: {', '.join(missing_types)}"
             )
 
         # TODO: Additional checks before marking delivered
-        # 1. delivery_arrival_at is set? => ??
-        # 2. Accessorials approved?? here or in complete_load?
+        # 1. Accessorials approved?? here or in complete_load?
         self._transition(
             new_status=self.Status.DELIVERED,
             delivered_at=timezone.now(),
@@ -1006,6 +1316,13 @@ class RescheduleRequest(BaseModel):
     load = models.ForeignKey(
         Load, on_delete=models.CASCADE, related_name="reschedule_requests"
     )
+    # reschedule will be for a specific stop
+    stop = models.ForeignKey(
+        "LoadStop",
+        on_delete=models.PROTECT,
+        related_name="reschedule_requests",
+        help_text="The specific stop for which the reschedule is requested",
+    )
     original_appointment = models.DateTimeField(
         verbose_name="Original Appointment"
     )  # allow it to be blank??
@@ -1052,6 +1369,20 @@ class RescheduleRequest(BaseModel):
     class Meta:
         ordering = ["-created_at"]  # Show newest requests first
 
+    def clean(self):
+        super().clean()
+        if self.stop and self.load and self.stop.load.load_id != self.load.load_id:
+            raise ValidationError(
+                {"stop": "The selected stop does not belong to the specified load."}
+            )
+        if self.original_appointment and self.new_appointment:
+            if self.new_appointment <= self.original_appointment:
+                raise ValidationError(
+                    {
+                        "new_appointment": "New appointment must be after the original appointment."
+                    }
+                )
+
     @property
     def is_fully_approved(self):
         """Check if all approvals are complete."""
@@ -1062,8 +1393,8 @@ class RescheduleRequest(BaseModel):
     @transaction.atomic
     def save(self, *args, **kwargs):
         if self.is_fully_approved:
-            self.load.delivery_datetime = self.new_appointment
-            self.load.save(update_fields=["delivery_datetime"])
+            self.stop.appt_start = self.new_appointment
+            self.stop.save(update_fields=["appt_start", "updated_at"])
 
         super().save(*args, **kwargs)
 

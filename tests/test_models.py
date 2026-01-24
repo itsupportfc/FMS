@@ -26,7 +26,7 @@ def make_user(role="dispatcher"):
 def add_document(load, doc_type="RC"):
     from django.core.files.base import ContentFile
 
-    return tms_models.Document.objects.create(
+    return tms_models.LoadDocument.objects.create(
         load=load,
         document_type=doc_type,
         file=ContentFile(b"test", name=f"{doc_type}.pdf"),
@@ -141,7 +141,7 @@ def test_handover_fails_without_carrier_assignment(load_factory):
     # Add RC document but no carrier/truck/driver
     from django.core.files.base import ContentFile
 
-    tms_models.Document.objects.create(
+    tms_models.LoadDocument.objects.create(
         load=load,
         document_type="RC",
         file=ContentFile(b"test", name="RC.pdf"),
@@ -162,7 +162,7 @@ def test_mark_delivered_fails_without_pod(load_factory):
     # Only add BOL, not POD
     from django.core.files.base import ContentFile
 
-    tms_models.Document.objects.create(
+    tms_models.LoadDocument.objects.create(
         load=load,
         document_type="BOL",
         file=ContentFile(b"test", name="BOL.pdf"),

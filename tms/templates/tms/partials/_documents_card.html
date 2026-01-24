@@ -3,17 +3,28 @@
 <div class="card">
     <h3 class="card-header">Documents</h3>
 
-    {% if load.documents.all %}
+    {# Use exists() instead of count method reference #}
+    {% if load.documents.exists %}
         <div class="space-y-3 mb-6">
             <p class="helper-text">Uploaded</p>
+
+            {# Show current docs first (your model supports is_current versioning) #}
             {% for doc in load.documents.all %}
-                <div class="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 hover:bg-gray-100 transition">
-                    <div class="flex-1">
-                        <p class="text-xs font-medium text-gray-900">{{ doc.get_document_type_display }}</p>
-                        <p class="text-xs text-gray-600 mt-0.5">{{ doc.original_filename }}</p>
+                {% if doc.is_current %}
+                    <div class="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 hover:bg-gray-100 transition">
+                        <div class="flex-1">
+                            <p class="text-xs font-medium text-gray-900">{{ doc.get_document_type_display }}</p>
+                            <p class="text-xs text-gray-600 mt-0.5">{{ doc.original_filename }}</p>
+
+                            {% if doc.description %}<p class="text-xs text-gray-500 mt-1">{{ doc.description }}</p>{% endif %}
+                        </div>
+
+                        <a href="{{ doc.file.url }}"
+                           target="_blank"
+                           rel="noopener"
+                           class="btn-ghost btn-sm">Download</a>
                     </div>
-                    <a href="{{ doc.file.url }}" target="_blank" class="btn-ghost btn-sm">Download</a>
-                </div>
+                {% endif %}
             {% endfor %}
         </div>
     {% else %}
@@ -22,20 +33,31 @@
 
     <div class="border-t border-gray-200 pt-5">
         <p class="text-md font-semibold text-gray-900 mb-3">Upload New Document</p>
+
         <form method="post"
               action="{% url 'upload_document' load.load_id %}"
-              enctype="mul
-              tipart/form-data"
+              enctype="multipart/form-data"
               class="space-y-4">
             {% csrf_token %}
+
             <div>
                 <label class="form-label">Document Type</label>
                 {{ doc_form.document_type|add_class:"form-select" }}
+                {% if doc_form.document_type.errors %}<p class="form-error">{{ doc_form.document_type.errors.0 }}</p>{% endif %}
             </div>
+
             <div>
                 <label class="form-label">File</label>
                 {{ doc_form.file|add_class:"form-input" }}
+                {% if doc_form.file.errors %}<p class="form-error">{{ doc_form.file.errors.0 }}</p>{% endif %}
             </div>
+
+            <div>
+                <label class="form-label">Description</label>
+                {{ doc_form.description|add_class:"form-input" }}
+                {% if doc_form.description.errors %}<p class="form-error">{{ doc_form.description.errors.0 }}</p>{% endif %}
+            </div>
+
             <button type="submit" class="btn-secondary w-full">Upload Document</button>
         </form>
     </div>

@@ -1,0 +1,60 @@
+<div class="card">
+    <h3 class="card-header">Stops</h3>
+
+    {% if load.stops.all %}
+        <ul class="info-list">
+            {% for s in load.stops.all|dictsort:"sequence" %}
+                <li class="info-item">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-semibold text-[15px] text-gray-900">Stop {{ s.sequence }} — {{ s.get_stop_type_display }}</p>
+                            <p class="text-[13px] text-gray-600">{{ s.facility.name }} ({{ s.facility.city }}, {{ s.facility.state }})</p>
+                        </div>
+
+                        {% if s.status == "completed" %}
+                            <span class="badge-green">COMPLETED</span>
+                        {% elif s.status == "skipped" %}
+                            <span class="badge-gray">SKIPPED</span>
+                        {% else %}
+                            <span class="badge-amber">PENDING</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="mt-2 text-[13px] text-gray-600 space-y-1">
+                        <p>
+                            <strong>Appt:</strong>
+                            {% if s.appointment_type == "fcfs" %}
+                                FCFS
+                            {% else %}
+                                {% if s.appt_start %}{{ s.appt_start|date:"M d, Y H:i" }}{% endif %}
+                                {% if s.appt_end %}→ {{ s.appt_end|date:"M d, Y H:i" }}{% endif %}
+                                {% if not s.appt_start and not s.appt_end %}—{% endif %}
+                            {% endif %}
+                        </p>
+
+                        {% if s.reference_number %}
+                            <p>
+                                <strong>Ref:</strong> {{ s.reference_number }}
+                            </p>
+                        {% endif %}
+                        {% if s.pieces %}
+                            <p>
+                                <strong>Pieces:</strong> {{ s.pieces }}
+                            </p>
+                        {% endif %}
+                        {% if s.weight %}
+                            <p>
+                                <strong>Weight:</strong> {{ s.weight }}
+                            </p>
+                        {% endif %}
+                    </div>
+
+                    {% if s.special_instructions %}<p class="helper-text mt-2">{{ s.special_instructions }}</p>{% endif %}
+                    {% if s.notes %}<p class="helper-text mt-1">{{ s.notes }}</p>{% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="helper-text italic">No stops defined.</p>
+    {% endif %}
+</div>

@@ -34,7 +34,7 @@ from .views import (
     load_carrier_assets,
     load_detail,
     loads_list,
-    update_reschedule_approvals,
+    edit_reschedule_approvals,
     upload_document,
 )
 
@@ -61,14 +61,14 @@ urlpatterns = [
         name="create_tracking_update",
     ),
     path(
-        "loads/<str:load_id>/reschedule/",
+        "loads/<str:load_id>/reschedule/new/",
         create_reschedule_request,
         name="create_reschedule_request",
     ),
     path(
-        "loads/<str:load_id>/reschedule/<int:request_id>/approvals/",
-        update_reschedule_approvals,
-        name="update_reschedule_approvals",
+        "loads/<str:load_id>/reschedule/<int:request_id>/edit/",
+        edit_reschedule_approvals,
+        name="edit_reschedule_approvals",
     ),
     path(
         "loads/<str:load_id>/accessorial/new",
