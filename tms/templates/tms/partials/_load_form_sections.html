@@ -114,7 +114,7 @@
                             {% if stop_form.appt_end.errors %}<p class="form-error">{{ stop_form.appt_end.errors.0 }}</p>{% endif %}
                         </div>
 
-                        <div class="space-y-2">
+                        {% comment %} <div class="space-y-2">
                             <label class="form-label">Reference #</label>
                             {{ stop_form.reference_number|add_class:"form-input" }}
                             {% if stop_form.reference_number.errors %}
@@ -126,7 +126,7 @@
                             <label class="form-label">Pieces</label>
                             {{ stop_form.pieces|add_class:"form-input" }}
                             {% if stop_form.pieces.errors %}<p class="form-error">{{ stop_form.pieces.errors.0 }}</p>{% endif %}
-                        </div>
+                        </div> {% endcomment %}
 
                         <div class="space-y-2">
                             <label class="form-label">Stop Weight</label>
@@ -195,14 +195,14 @@
                                 {% endif %}
                             </div>
 
-                            <div>
+                            {% comment %} <div>
                                 <span class="font-medium">Reference:</span>
                                 {% if s.reference_number %}
                                     {{ s.reference_number }}
                                 {% else %}
                                     —
                                 {% endif %}
-                            </div>
+                            </div> {% endcomment %}
 
                             <div>
                                 <span class="font-medium">Arrived:</span>

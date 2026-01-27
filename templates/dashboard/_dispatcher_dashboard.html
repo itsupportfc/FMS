@@ -65,11 +65,10 @@
 
                         <div class="col-span-2 text-[14px] text-gray-700">
                             <span class="font-semibold text-gray-900">FROM</span>
-                            {{ load.pickup_facility.city }}, {{ load.pickup_facility.state }}
+                            {{ load.origin }}
                             →
-
                             <span class="font-semibold text-gray-900">TO</span>
-                            {{ load.delivery_facility.city }}, {{ load.delivery_facility.state }}
+                            {{ load.destination }}
                         </div>
 
                         <a href="{% url 'load_detail' load.load_id %}"
@@ -104,10 +103,10 @@
 
                         <div class="col-span-2 text-[14px] text-gray-700">
                             <span class="font-semibold text-gray-900">FROM</span>
-                            {{ load.pickup_facility.city }}, {{ load.pickup_facility.state }}
+                            {{ load.origin }}
                             →
                             <span class="font-semibold text-gray-900">TO</span>
-                            {{ load.delivery_facility.city }}, {{ load.delivery_facility.state }}
+                            {{ load.destination }}
                         </div>
 
                         <a href="{% url 'load_detail' load.load_id %}"

@@ -1,0 +1,65 @@
+{# tms/partials/_stop_row.html #}
+<div data-stop-row class="border border-gray-200 rounded-lg p-5 bg-white">
+    {# ✅ OOB: updates the existing management input rendered by management_form #}
+    <input type="hidden"
+           id="id_stops-TOTAL_FORMS"
+           name="stops-TOTAL_FORMS"
+           value="{{ next_total }}"
+           hx-swap-oob="true" />
+
+    {% if stop_form.non_field_errors %}<div class="alert-error mb-3">{{ stop_form.non_field_errors }}</div>{% endif %}
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+            <label class="form-label" for="{{ stop_form.stop_type.id_for_label }}">Stop Type</label>
+            {{ stop_form.stop_type }}
+            {% for e in stop_form.stop_type.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+        </div>
+
+        <div>
+            <label class="form-label" for="{{ stop_form.facility.id_for_label }}">Facility</label>
+            {{ stop_form.facility }}
+            {% for e in stop_form.facility.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+        </div>
+
+        <div>
+            <label class="form-label"
+                   for="{{ stop_form.appointment_type.id_for_label }}">Appointment Type</label>
+            {{ stop_form.appointment_type }}
+            {% for e in stop_form.appointment_type.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+            <div class="helper-text">FCFS by default. Select Appointment to enter times.</div>
+        </div>
+    </div>
+
+    <div data-appt-fields
+         hidden
+         class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+            <label class="form-label" for="{{ stop_form.appt_start.id_for_label }}">Appt Start</label>
+            {{ stop_form.appt_start }}
+            {% for e in stop_form.appt_start.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+        </div>
+
+        <div>
+            <label class="form-label" for="{{ stop_form.appt_end.id_for_label }}">Appt End</label>
+            {{ stop_form.appt_end }}
+            {% for e in stop_form.appt_end.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+        <div>
+            <label class="form-label" for="{{ stop_form.weight.id_for_label }}">Weight</label>
+            {{ stop_form.weight }}
+            {% for e in stop_form.weight.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+        </div>
+
+        <div>
+            <label class="form-label" for="{{ stop_form.notes.id_for_label }}">Notes</label>
+            {{ stop_form.notes }}
+            {% for e in stop_form.notes.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+        </div>
+    </div>
+
+    {{ stop_form.id }}
+</div>

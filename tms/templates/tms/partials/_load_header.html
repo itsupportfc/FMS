@@ -14,20 +14,6 @@
                     {% endif %}
                 </p>
 
-                {# Optional: quick route summary if stops provided in context #}
-                {% if stops %}
-                    <p class="text-sm text-gray-700 mt-1">
-                        Route:
-                        {% with first=stops|first last=stops|last %}
-                            {% if first and last %}
-                                {{ first.facility.city }}, {{ first.facility.state }}
-                                →
-                                {{ last.facility.city }}, {{ last.facility.state }}
-                                <span class="text-xs text-gray-500">({{ stops|length }} stops)</span>
-                            {% endif %}
-                        {% endwith %}
-                    </p>
-                {% endif %}
             </div>
 
             {# Status badge #}

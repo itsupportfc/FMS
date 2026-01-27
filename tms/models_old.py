@@ -54,6 +54,7 @@ class Facility(BaseModel):
     class FacilityType(models.TextChoices):
         SHIPPER = "shipper", "Shipper"
         RECEIVER = "receiver", "Receiver (Consignee)"
+        # BOTH = "both", "Both (Shipper & Receiver)"
 
     # Identification
     name = models.CharField(max_length=200)
@@ -118,6 +119,7 @@ class Carrier(BaseModel):
     carrier_has_insurance = models.BooleanField(
         default=True, help_text="Does this carrier have valid insurance?"
     )
+    # insurance_expiry_date = models.DateField(null=True, blank=True)
 
     # Audit - who created this carrier
     created_by = models.ForeignKey(
@@ -131,6 +133,8 @@ class Carrier(BaseModel):
 class Truck(BaseModel):
     """
     Truck unit - combines tractor and trailer info for V1 MVP.
+    In V1, we treat truck+trailer as a single unit since most operations
+    use dry vans and reefers consistently.
     """
 
     class EquipmentType(models.TextChoices):
@@ -206,7 +210,7 @@ class Truck(BaseModel):
         ]
 
     def __str__(self):
-        return f"{self.truck_number} ({self.EquipmentType(self.equipment_type).label})"
+        return f"{self.truck_number} ({self.get_equipment_type_display()})"
 
 
 class Driver(BaseModel):
@@ -262,6 +266,8 @@ class Driver(BaseModel):
 
 class CarrierDocument(BaseModel):
     """LoadDocument related to a Carrier."""
+
+    # Override uploaded_by with unique related_name
 
     class DocumentType(models.TextChoices):
         W9 = "W9", "W9"
@@ -336,7 +342,17 @@ class LoadDocument(BaseModel):
 
 class Accessorial(BaseModel):
     """
-    Extra charges for a Load
+    Canonical extra charge applied to a load.
+    This table is the source of truth for:
+    - money
+    - approvals
+    - reporting
+    - accounting exports
+
+    V1 Approval: Simple boolean toggles
+    - Tracking agent manually obtains approval (phone/email)
+    - Updates manager_approved and broker_approved booleans directly
+    - No automated workflow - just manual updates
     """
 
     class ChargeType(models.TextChoices):
@@ -374,6 +390,7 @@ class Accessorial(BaseModel):
     # Tracking agent updates these after obtaining verbal approval
     manager_approved = models.BooleanField(default=False)
     broker_approved = models.BooleanField(default=False)
+    # broker_notified = models.BooleanField(default=False)
 
     # ---- Audit ----
     created_by = models.ForeignKey(
@@ -403,6 +420,9 @@ class Accessorial(BaseModel):
     def is_approved(self):
         """
         Core approval status: True if both manager and broker approved.
+
+        WHY property not stored field: Avoids sync issues and redundancy.
+        Single source of truth: manager_approved and broker_approved booleans.
         """
         return self.manager_approved and self.broker_approved
 
@@ -425,6 +445,8 @@ class LoadStop(BaseModel):
 
     class StopStatus(models.TextChoices):
         PENDING = "pending", "Pending"
+        # ARRIVED = "arrived", "Arrived"
+        # IN_PROGRESS = "in_progress", "Loading/Unloading"
         COMPLETED = "completed", "Completed"
         SKIPPED = "skipped", "Skipped"
 
@@ -439,6 +461,12 @@ class LoadStop(BaseModel):
         help_text="Route order: 1,2,3 ..(important for routing)"
     )
 
+    # Appointment (Compatibility + Future)
+    # appointment_datetime = models.DateTimeField(
+    #     null=True,
+    #     blank=True,
+    #     help_text="(Legacy/compat) Single appointment datetime if not using a window",
+    # )
     appt_start = models.DateTimeField(
         null=True,
         blank=True,
@@ -455,7 +483,7 @@ class LoadStop(BaseModel):
             ("appt", "Appointment"),
             ("fcfs", "First Come First Serve"),
         ],
-        default="fcfs",
+        default="appt",
     )
 
     status = models.CharField(
@@ -475,10 +503,26 @@ class LoadStop(BaseModel):
         help_text="When truck physically departed this stop",
     )
 
+    # Optional per-stop shipment identifiers / quantities (very common in multi-stop)
+    reference_number = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="PO#, BOL#, Delivery#, etc. specific to this stop",
+    )
+    pieces = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Pieces/pallets for this stop only",
+    )
     weight = models.PositiveIntegerField(
         null=True,
         blank=True,
         help_text="Weight for this stop only",
+    )
+
+    special_instructions = models.TextField(
+        blank=True,
+        help_text="Dock#, gate code, contact name, check-in process, etc.",
     )
 
     notes = models.TextField(blank=True)
@@ -489,17 +533,18 @@ class LoadStop(BaseModel):
                 fields=["load", "sequence"], name="unique_stop_sequence"
             )
         ]
-        ordering = ["sequence"]
 
     def __str__(self):
         return (
-            f"{self.load.load_id} - Stop"
-            f" ({self.StopType(self.stop_type).label}: {self.facility.name})"
+            f"{self.load.load_id} - Stop {self.sequence}"
+            f" ({self.get_stop_type_display()}: {self.facility.name})"
         )
 
     def clean(self):
         super().clean()
-
+        # squence must start from 1
+        if self.sequence and self.sequence < 1:
+            raise ValidationError({"sequence": "Sequence must be 1 or greater."})
         # appt window
         if self.appt_start and self.appt_end:
             if self.appt_start > self.appt_end:
@@ -622,6 +667,37 @@ class Load(BaseModel):
         help_text="Assigned during dispatch",
     )
 
+    # Pickup Information (address stored in Facility model)
+    # pickup_facility = models.ForeignKey(
+    #     Facility,
+    #     on_delete=models.PROTECT,
+    #     related_name="pickup_loads",
+    #     help_text="Shipper location - contains address details",
+    # )
+    # # pickup_date = models.DateField()
+    # pickup_datetime = models.DateTimeField(null=True, blank=True)
+    # pickup_appointment_type = models.CharField(
+    #     max_length=10,
+    #     choices=[("appt", "Appointment"), ("fcfs", "First Come First Serve")],
+    #     default="appt",
+    #     blank=True,
+    # )
+
+    # # Delivery Information (address stored in Facility model)
+    # delivery_facility = models.ForeignKey(
+    #     Facility,
+    #     on_delete=models.PROTECT,
+    #     related_name="delivery_loads",
+    #     help_text="Receiver/consignee location - contains address details",
+    # )
+    # delivery_datetime = models.DateTimeField(null=True, blank=True)
+    # delivery_appointment_type = models.CharField(
+    #     max_length=10,
+    #     choices=[("appt", "Appointment"), ("fcfs", "First Come First Serve")],
+    #     default="appt",
+    #     blank=True,
+    # )
+
     # Financial
     miles = models.PositiveIntegerField(
         help_text="Total loaded miles", blank=True, null=True
@@ -685,6 +761,26 @@ class Load(BaseModel):
         blank=True,
         help_text="When assigned to carrier/truck/driver",
     )
+    # pickup_arrival_at = models.DateTimeField(
+    #     null=True,
+    #     blank=True,
+    #     help_text="When truck arrived at pickup facility",
+    # )
+    # pickup_departure_at = models.DateTimeField(
+    #     null=True,
+    #     blank=True,
+    #     help_text="When truck departed pickup facility",
+    # )
+    # delivery_arrival_at = models.DateTimeField(
+    #     null=True,
+    #     blank=True,
+    #     help_text="When truck arrived at delivery facility",
+    # )
+    # delivery_departure_at = models.DateTimeField(
+    #     null=True,
+    #     blank=True,
+    #     help_text="When truck departed delivery facility",
+    # )
     delivered_at = models.DateTimeField(
         null=True,
         blank=True,
@@ -703,17 +799,6 @@ class Load(BaseModel):
 
     # Notes
     remarks = models.TextField(blank=True)
-
-    def clean(self):
-        super().clean()
-        if (self.driver or self.truck) and not self.carrier:
-            raise ValidationError(
-                "Carrier must be assigned if driver or truck is assigned."
-            )
-        if self.carrier and self.driver and self.driver.carrier != self.carrier:
-            raise ValidationError("Driver's carrier does not match assigned carrier.")
-        if self.carrier and self.truck and self.truck.carrier != self.carrier:
-            raise ValidationError("Truck's carrier does not match assigned carrier.")
 
     def save(self, *args, **kwargs):
         # Auto-calculate RPM
@@ -770,10 +855,47 @@ class Load(BaseModel):
     def is_multi_stop(self):
         return self.get_total_stops_count() > 2
 
+    # ============================================================================
+    # STATUS WORKFLOW METHODS
+    # ============================================================================
+    # Design Pattern: State Machine with Guard Clauses
+    # - Each transition method validates preconditions before changing state
+    # - Uses @transaction.atomic to ensure database consistency
+    # - Centralizes business logic in model (Django best practice)
+    # ============================================================================
+
+    def _transition(self, new_status, **extra_fields):
+        """
+        Internal helper to change load status safely.
+
+        WHY: Centralizing status changes prevents bugs where status is set
+        without updating related timestamps or fields. All status changes
+        MUST go through transition methods, never direct assignment.
+
+        Args:
+            new_status: Target status from Load.Status choices
+            **extra_fields: Additional fields to update (e.g., dispatched_at=timezone.now())
+        """
+
+        self.status = new_status
+
+        # update additional fields passed like timestamps etc
+        # my_dict.items() → key–value pairs
+        for key, value in extra_fields.items():
+            setattr(self, key, value)
+        self.save()
+
+        # TODO
+        # Log status change in LoadHistory model (not implemented yet)
+
+    # STATUS HELPERS
     def has_rate_confirmation(self):
         """
         Check if Rate Confirmation document is uploaded.
-        Can keep here as it is a simple Read-only property.
+
+        WHY: RC document is required before handover to tracking.
+        This is a business rule - loads can't be dispatched without broker approval.
+        Separating this check makes it reusable and testable.
         """
         return self.documents.filter(
             document_type=LoadDocument.DocumentType.RC
@@ -814,6 +936,335 @@ class Load(BaseModel):
 
         return True
 
+    def get_available_actions(self, user):
+        """
+        Return list of actions this user can perform on this load RIGHT
+          NOW.
+
+        WHY: Only showing relevant actions (not grayed-out buttons) creates
+        cleaner UX and reduces cognitive load. Users see exactly what they
+        can do at this moment based on load status.
+
+        Returns: List of action strings like ["start_transit", "upload_document"]
+
+        Usage in template:
+            {% with actions=load.get_available_actions user %}
+                {% if "start_transit" in actions %}
+                    <button>Start Transit</button>
+                {% endif %}
+            {% endwith %}
+
+        Design: Actions filtered by role AND current load status.
+        Validation still happens in views for safety, but UI only shows
+        actions that should succeed.
+        """
+        actions = []
+
+        # Dispatcher actions
+        if user.role == "dispatcher":
+            # Can handover only when BOOKED and all preconditions met
+            if self.status == self.Status.BOOKED and self.can_handover():
+                actions.append("handover_to_tracking")
+
+            # Can cancel anytime before completion
+            if self.status not in [
+                self.Status.COMPLETED,
+                self.Status.DELIVERED,
+                self.Status.CANCELLED,
+            ]:
+                actions.append("cancel_load")
+
+            # Can reschedule anytime before completion
+            if self.status not in [
+                self.Status.COMPLETED,
+                self.Status.CANCELLED,
+                self.Status.DELIVERED,
+            ]:
+                actions.append("create_reschedule_request")
+
+            # Can add accessorials anytime before completion
+            if self.status not in [self.Status.COMPLETED, self.Status.CANCELLED]:
+                actions.append("add_accessorial")
+
+        # Tracking agent actions
+        if user.role == "tracking_agent":
+            # Can start transit only when dispatched
+            if self.status == self.Status.DISPATCHED:
+                actions.append("start_transit")
+
+            # Can mark delivered only when in transit
+            if self.status == self.Status.IN_TRANSIT:
+                actions.append("mark_delivered")
+
+            # Can complete only when delivered
+            if self.status == self.Status.DELIVERED:
+                actions.append("complete_load")
+
+            # Can add tracking updates during active transit
+            if self.status in [
+                self.Status.DISPATCHED,
+                self.Status.IN_TRANSIT,
+                # self.Status.DELIVERED,
+            ]:
+                actions.append("add_tracking_update")
+
+            # Can reschedule anytime before completion
+            if self.status not in [
+                self.Status.COMPLETED,
+                self.Status.CANCELLED,
+                self.Status.DELIVERED,
+            ]:
+                actions.append("create_reschedule_request")
+
+            # Can add accessorials anytime before completion
+            if self.status not in [self.Status.COMPLETED, self.Status.CANCELLED]:
+                actions.append("add_accessorial")
+
+        # COMMON ACTIONS FOR ALL ROLES
+
+        # Can view driver HOS if driver is assigned
+        if self.driver:
+            actions.append("view_driver_hos")
+
+        # Document upload available for all users, all statuses (including COMPLETED for audit)
+        # WHY: May need to upload POD after completion, or detention receipts later
+        actions.append("upload_document")
+
+        return actions
+
+    # ============================================================================
+    # STATUS TRANSITION METHODS
+    # ============================================================================
+    # Pattern: Guard Clauses → State Change → Side Effects
+    # Each method follows same structure:
+    # 1. Validate current status
+    # 2. Validate business rules (documents, assignments, etc.)
+    # 3. Change status using _transition()
+    # 4. Create side-effect records (Handover, Accessorial, etc.)
+    # ============================================================================
+
+    @transaction.atomic
+    def handover_to_tracking(self, tracking_agent, instructions=""):
+        """
+        BOOKED -> DISPATCHED
+        WHY: Marks when dispatcher hands responsibility to tracking agent.
+        This is a critical workflow boundary - dispatcher books/assigns,
+        tracker monitors/completes.
+
+        Side Effects:
+        - Sets dispatched_at timestamp (marks when handover occurred)
+        - Assigns tracking_agent (who is now responsible)
+        - Creates Handover record (audit trail of who handed to whom)
+
+        @transaction.atomic WHY: If Handover record creation fails, we don't
+        want Load stuck in DISPATCHED without audit record. All-or-nothing.
+
+        Args:
+            tracking_agent: User instance (must have role="tracking_agent")
+            instructions: Optional special instructions for tracker
+
+        Raises:
+            ValueError: If preconditions not met (clear message for user)
+        """
+
+        # GUARD CLAUSES
+        errors = []
+        if self.status != self.Status.BOOKED:
+            errors.append("Load is not in BOOKED status.")
+        if not self.has_rate_confirmation():
+            # WHY: Broker must confirm rate before we dispatch truck
+            errors.append("Rate Confirmation document is missing.")
+        if not self.carrier or not self.truck or not self.driver:
+            errors.append("Carrier, Truck, and Driver must be assigned.")
+
+        # require stops
+        if not self.stops.exists():
+            errors.append("At least 2 stops must be defined for the load.")
+
+        # Validate APPT stops have appointment window
+        if self.stops.exists():
+            for stop in self.stops.all():
+                if stop.appointment_type == "appt" and not (
+                    stop.appt_start or stop.appt_end
+                ):
+                    errors.append(
+                        "All APPT stops must have at least appt_start (or a window)."
+                    )
+                    break
+
+        if errors:
+            raise ValueError("Cannot handover load: " + "; ".join(errors))
+
+        # if no errors -> TRANSITION
+        self._transition(
+            new_status=self.Status.DISPATCHED,
+            tracking_agent=tracking_agent,
+            dispatched_at=timezone.now(),
+        )
+
+        # create HANDOVER record/excel sheet equivalent
+        # WHY: Immutable record of who handed what to whom, when
+        Handover.objects.create(
+            load=self,
+            from_agent=self.dispatcher,
+            to_agent=tracking_agent,
+            special_instructions=instructions,
+        )
+
+    @transaction.atomic
+    def start_transit(self):
+        """
+        Transition: DISPATCHED → IN_TRANSIT
+
+        WHY: Marks when truck physically leaves pickup facility with cargo.
+        This is important for:
+        - ETA calculations (transit started, can estimate delivery)
+        - Driver HOS tracking (on-duty driving time starts)
+        - Milestone reporting to broker ("load picked up")
+
+        Side Effects:
+        - Sets pickup_departure_at timestamp (when truck left shipper)
+
+        Note: pickup_arrival_at should be set separately (manual entry by tracker) => IF NEEDED
+        WHY: Tracker logs arrival when driver calls/texts, but departure is when
+        they actually start moving - that's when status changes.
+        """
+        # Guard clause
+        if self.status != self.Status.DISPATCHED:
+            raise ValueError("Load is not in DISPATCHED status.")
+
+        # TODO: what extra things we can check?
+        # 1. validate pickup_arrival_at is set?
+        self._transition(
+            new_status=self.Status.IN_TRANSIT,
+        )
+
+    @transaction.atomic
+    def mark_delivered(self):
+        """
+        Transition: IN_TRANSIT → DELIVERED
+
+        WHY: Marks load as physically delivered at destination.
+        This confirms the truck has completed delivery but load is not yet
+        PAID , the accounts team will now take over and create invoices and track payment.
+
+        Validation:
+        - Checks that all documents required for delivery exist
+        - WHY: Can't mark delivered without POD (Proof of Delivery)
+
+        Side Effects:
+        - Sets delivered_at timestamp (when delivery physically completed)
+        """
+
+        # Guard clause
+        if self.status != self.Status.IN_TRANSIT:
+            raise ValueError("Load is not in IN_TRANSIT status.")
+
+        # Multi-stop completion check (delivery stops must be completed or skipped)
+        delivery_stops = self.stops.filter(stop_type=LoadStop.StopType.DELIVERY)
+        if delivery_stops.exists():
+            incomplete_stops = delivery_stops.exclude(
+                status__in=[LoadStop.StopStatus.COMPLETED, LoadStop.StopStatus.SKIPPED]
+            )
+            if incomplete_stops.exists():
+                raise ValueError(
+                    "Cannot mark as delivered. All delivery stops must be completed or skipped."
+                )
+
+        # Check required documents (POD, BOL)
+        missing_types = []
+        for doc_type in LoadDocument.REQUIRED_FOR_COMPLETION:
+            if not self.documents.filter(document_type=doc_type).exists():
+                missing_types.append(LoadDocument.DocumentType(doc_type).label)
+        if missing_types:
+            raise ValueError(
+                f"Cannot mark as delivered. These documents are missing: {', '.join(missing_types)}"
+            )
+
+        # TODO: Additional checks before marking delivered
+        # 1. Accessorials approved?? here or in complete_load?
+        self._transition(
+            new_status=self.Status.DELIVERED,
+            delivered_at=timezone.now(),
+        )
+
+    @transaction.atomic
+    def complete_load(self):
+        """
+        Transition: DELIVERED → COMPLETED
+        WHY: Marks load as fully completed and closed.
+        This indicates all tracking, paperwork, and billing are done.
+
+        BUT payment from carrier is still pending.
+        """
+
+        # Guard clause
+        if self.status != self.Status.DELIVERED:
+            raise ValueError("Load is not in DELIVERED status.")
+
+        # TODO: Additional checks before final completion
+        # 1. All accessorials approved?
+        # 2. All detention/layover details finalized?
+        # 3. Carrier payment confirmed?
+
+        self._transition(
+            new_status=self.Status.COMPLETED,
+            completed_at=timezone.now(),
+        )
+
+    @transaction.atomic
+    def cancel(self, reason=""):
+        """
+        Transition: (ANY except COMPLETED) → CANCELLED
+
+        WHY: Loads can be cancelled at any stage before completion:
+        - During booking: Broker cancelled the shipment
+        - During dispatch: Carrier backed out
+        - During transit: Truck breakdown, shipper closed, etc.
+
+        Side Effects:
+        - Sets cancelled_at timestamp
+        - Auto-creates TONU (Truck Order Not Used) accessorial charge
+
+        TONU Charge WHY: When load is cancelled, we may bill broker for
+        calling a truck that didn't haul freight. Charge starts as PENDING
+        so dispatcher/manager can set amount and get broker approval.
+
+        Amount = 0 by default because TONU rates vary by situation:
+        - Cancelled before pickup: Usually 0 or small fee
+        - Cancelled at shipper: Higher fee (truck drove there)
+        - Cancelled mid-transit: Negotiated with broker
+
+        @transaction.atomic WHY: Status change + TONU creation must be atomic.
+        Don't want load CANCELLED without corresponding charge record.
+        """
+
+        # Guard clause
+        if self.status in [
+            self.Status.CANCELLED,
+            self.Status.COMPLETED,
+            self.Status.DELIVERED,
+        ]:
+            raise ValueError("Load is already CANCELLED, DELIVERED or COMPLETED.")
+
+        self._transition(
+            new_status=self.Status.CANCELLED,
+            cancelled_at=timezone.now(),
+        )
+
+        # Auto-create TONU accessorial charge (initially pending via boolean approvals)
+        tonu = Accessorial.objects.create(
+            load=self,
+            charge_type=Accessorial.ChargeType.TONU,
+            amount=0.00,  # will be set during approval
+            description=f"TONU charge - Load cancelled at {self.Status(self.status).label}",
+            created_by=self.dispatcher,
+        )
+        # Free up truck status
+        if self.truck:
+            self.truck.current_status = Truck.TruckStatus.AVAILABLE
+            self.truck.save(update_fields=["current_status"])
+
 
 class RescheduleRequest(BaseModel):
     """
@@ -837,18 +1288,19 @@ class RescheduleRequest(BaseModel):
     )
     # reschedule will be for a specific stop
     stop = models.ForeignKey(
-        LoadStop,
+        "LoadStop",
         on_delete=models.PROTECT,
         related_name="reschedule_requests",
         help_text="The specific stop for which the reschedule is requested",
     )
-    # Snapshot of what the stop appointment was at the time the request was created
-    original_appt_start = models.DateTimeField(null=True, blank=True)
-    original_appt_end = models.DateTimeField(null=True, blank=True)
+    original_appointment = models.DateTimeField(
+        verbose_name="Original Appointment"
+    )  # allow it to be blank??
 
-    # What is being requested (new window)
-    requested_appt_start = models.DateTimeField(null=True, blank=True)
-    requested_appt_end = models.DateTimeField(null=True, blank=True)
+    # Requested New Schedule
+    new_appointment = models.DateTimeField(
+        verbose_name="New Appointment"
+    )  # allow it to be blank??
 
     reason = models.CharField(
         max_length=20,
@@ -893,37 +1345,13 @@ class RescheduleRequest(BaseModel):
             raise ValidationError(
                 {"stop": "The selected stop does not belong to the specified load."}
             )
-        # Validate window ordering for requested window
-        if self.requested_appt_start and self.requested_appt_end:
-            if self.requested_appt_start > self.requested_appt_end:
+        if self.original_appointment and self.new_appointment:
+            if self.new_appointment <= self.original_appointment:
                 raise ValidationError(
-                    {"requested_appt_end": "Requested end must be after start."}
+                    {
+                        "new_appointment": "New appointment must be after the original appointment."
+                    }
                 )
-
-        # Validate window ordering for original snapshot (if provided)
-        if self.original_appt_start and self.original_appt_end:
-            if self.original_appt_start > self.original_appt_end:
-                raise ValidationError(
-                    {"original_appt_end": "Original end must be after start."}
-                )
-
-        if self.stop:
-            if self.stop.appointment_type == "appt":
-                if not self.requested_appt_start and not self.requested_appt_end:
-                    raise ValidationError(
-                        {
-                            "requested_appt_start": "For APPT stops, provide at least requested_appt_start (or a window)."
-                        }
-                    )
-            else:  # fcfs
-                if not self.remarks and not (
-                    self.requested_appt_start or self.requested_appt_end
-                ):
-                    raise ValidationError(
-                        {
-                            "remarks": "For FCFS stops, provide details in remarks if no specific requested appointment time is given."
-                        }
-                    )
 
     @property
     def is_fully_approved(self):
@@ -931,6 +1359,14 @@ class RescheduleRequest(BaseModel):
         return (
             self.consignee_approved and self.broker_approved and self.manager_approved
         )
+
+    @transaction.atomic
+    def save(self, *args, **kwargs):
+        if self.is_fully_approved:
+            self.stop.appt_start = self.new_appointment
+            self.stop.save(update_fields=["appt_start", "updated_at"])
+
+        super().save(*args, **kwargs)
 
 
 class DutyLog(BaseModel):
@@ -969,6 +1405,9 @@ class DutyLog(BaseModel):
     status = models.CharField(max_length=25, choices=DutyStatus.choices)
     start_time = models.DateTimeField()
     end_time = models.DateTimeField(null=True, blank=True)
+    # duration = models.DurationField(
+    #     null=True, blank=True, help_text="Auto-calculated from start/end times"
+    # )
 
     # Location
     current_location = models.CharField(
@@ -1009,7 +1448,6 @@ class TrackingUpdate(BaseModel):
         BROKER_REQ = "broker_req", "Broker - Requested Change"
         DOC_ERROR = "doc_error", "Administrative - Rate Con/Paperwork Error"
         MISSED_APPT = "missed_appt", "Operational - Driver Missed Appointment"
-        OTHER = "other", "Other"
 
     class TrackingMethod(models.TextChoices):
         PHONE = "phone", "Phone Call"
@@ -1087,3 +1525,14 @@ class Handover(BaseModel):
 
     def __str__(self):
         return f"{self.load.load_id} → {self.to_agent.username if self.to_agent else 'Unassigned'} @ {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+
+    def save(self, *args, **kwargs):
+        """
+        On handover creation, automatically assign tracking agent to load.
+        V1 MVP: No acceptance step needed.
+        """
+        super().save(*args, **kwargs)
+        # Auto-update load's tracking_agent
+        if self.to_agent and self.load:
+            self.load.tracking_agent = self.to_agent
+            self.load.save(update_fields=["tracking_agent"])

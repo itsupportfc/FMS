@@ -32,7 +32,7 @@
                             {% endif %}
                         </p>
 
-                        {% if s.reference_number %}
+                        {% comment %} {% if s.reference_number %}
                             <p>
                                 <strong>Ref:</strong> {{ s.reference_number }}
                             </p>
@@ -41,7 +41,7 @@
                             <p>
                                 <strong>Pieces:</strong> {{ s.pieces }}
                             </p>
-                        {% endif %}
+                        {% endif %} {% endcomment %}
                         {% if s.weight %}
                             <p>
                                 <strong>Weight:</strong> {{ s.weight }}
