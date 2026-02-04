@@ -1,0 +1,42 @@
+<!-- Check In Modal -->
+<div id="check-in-modal"
+     class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50"
+     hx-on="htmx:afterSwap: this.remove()">
+    <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+        <h3 class="text-lg font-semibold mb-4">Check In at Stop</h3>
+
+        <form hx-post="{% url 'stop_check_in' stop.id %}"
+              hx-target="#stop-{{ stop.id }}"
+              hx-swap="outerHTML">
+            {% csrf_token %}
+
+            <div class="mb-4">
+                <p class="text-sm text-gray-600 mb-2">
+                    <strong>Stop:</strong> {{ stop.sequence }} - {{ stop.get_stop_type_display }}
+                </p>
+                <p class="text-sm text-gray-600 mb-4">
+                    <strong>Location:</strong> {{ stop.facility.name }}, {{ stop.facility.city }}, {{ stop.facility.state }}
+                </p>
+            </div>
+
+            <div class="mb-6">
+                <label for="arrival_time"
+                       class="block text-sm font-medium text-gray-700 mb-1">Arrival Time</label>
+                <input type="datetime-local"
+                       id="arrival_time"
+                       name="arrival_time"
+                       value="{{ current_time }}"
+                       class="form-input"
+                       required />
+                <p class="helper-text">Pre-filled to current time. Adjust if needed.</p>
+            </div>
+
+            <div class="flex justify-end space-x-3">
+                <button type="button"
+                        class="btn-secondary"
+                        onclick="document.getElementById('check-in-modal').remove()">Cancel</button>
+                <button type="submit" class="btn-primary">Check In</button>
+            </div>
+        </form>
+    </div>
+</div>

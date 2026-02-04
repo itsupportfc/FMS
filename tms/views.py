@@ -1,11 +1,6 @@
-import re
-import stat
-from urllib import request
-
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -13,25 +8,33 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from accounts.models import User
-from tms.policies.roles import is_dispatcher
+from tms.policies.load_actions import get_available_actions
+from tms.services.cancel import cancel_load
+from tms.services.completion import complete_load
+from tms.services.delivery import mark_delivered
+from tms.services.duty_logs import create_duty_log
 from tms.services.exceptions import ServiceError
+from tms.services.handover import handover_to_tracking
+from tms.services.hos import HOSCalculator
 from tms.services.load_creation import create_load_with_stops
+from tms.services.transit import start_transit
 
-# from tms.services.duty_logs import create_duty_log
-# from tms.services.hos import HOSCalculator
 from .forms import (
-    # AccessorialForm,
+    AccessorialForm,
     DocumentUploadForm,
-    # DutyLogForm,
+    DutyLogForm,
     LoadForm,
+    LoadStopForm,
     LoadStopFormSet,
-    # RescheduleRequestForm,
-    # TrackingUpdateForm,
+    RescheduleRequestForm,
+    TrackingUpdateForm,
 )
 from .models import (
     Accessorial,
+    Broker,
     Carrier,
     Driver,
+    Facility,
     Load,
     LoadDocument,
     LoadStop,
@@ -227,11 +230,15 @@ def load_stop_row(request):
 
     index = int(request.GET.get("index", 0))
 
-    stop_form = LoadStopFormSet(prefix=f"stops-{index}")
+    # Create a single empty form (not formset) for the new stop
+    stop_form = LoadStopForm()
+
+    # Manually set the form prefix and initial data
+    stop_form.prefix = f"stops-{index}"
 
     html = render_to_string(
         "tms/partials/_stop_row.html",
-        {"stop_form": stop_form, "index": index + 1},
+        {"stop_form": stop_form, "index": index, "next_total": index + 1},
         request=request,
     )
     return HttpResponse(html)
@@ -239,122 +246,72 @@ def load_stop_row(request):
 
 @login_required
 def load_detail(request, load_id):
-    load = (
-        Load.objects.select_related(
-            "broker", "carrier", "truck", "driver", "dispatcher", "tracking_agent"
-        )
-        .prefetch_related("stops__facility", "documents")
-        .get(load_id=load_id)
-    )
+    """
+    Display and edit load details + show stops (read-only)
 
-    stops = load.stops.select_related("facility").order_by("sequence")
+    Single view for both:
+    - GET: Display current load state + editable form
+    - POST: Update load fields (not status - that's via change_status view)
+
+    WHY single view: Reduces code duplication. Edit form looks identical
+    to detail view, just with editable fields instead of readonly text.
+
+    V1 Rule:
+    - Stops are read-only on load_detail page.
+    - Stop editing only happens during load creation.
+
+    """
+    # Get load or 404 if not found
+    # WHY get_object_or_404: Better UX than generic 500 error
+    load = get_object_or_404(Load, load_id=load_id)
+
+    if request.method == "POST":
+        # Update existing load with form data
+        # WHY instance=load: Pre-populates form with current values
+        # WHY user=request.user: Form needs user for permission checks
+        form = LoadForm(request.POST, instance=load, user=request.user)
+
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Load updated successfully.")
+            # Redirect back to same page (PRG pattern)
+            return redirect("load_detail", load_id=load.load_id)
+    else:
+        # GET request: Show form pre-filled with current load data
+        form = LoadForm(instance=load, user=request.user)
+
+    # LoadDocument upload form (always shown, even on COMPLETED loads for audit)
+    doc_form = DocumentUploadForm()
+
+    # Get list of tracking agents for handover dropdown
+    # WHY: Dispatcher selects who to handover load to
+    tracking_agents = User.objects.filter(role="tracking_agent", is_active=True)
+
+    # Get available actions for current user
+    # WHY: Template uses this to show/hide action buttons
+    available_actions = get_available_actions(request.user, load)
+
+    # Related activity lists for sidebar/history panels
+    tracking_updates = load.tracking_updates.all()
+    reschedule_requests = load.reschedule_requests.all()
+
+    # For read-only display
+    stops = load.stops.order_by("sequence")
 
     return render(
         request,
         "tms/load_detail.html",
         {
             "load": load,
+            "form": form,
+            "doc_form": doc_form,
             "stops": stops,
+            "tracking_agents": tracking_agents,
+            "available_actions": available_actions,
+            "tracking_updates": tracking_updates,
+            "reschedule_requests": reschedule_requests,
         },
     )
-
-
-# @login_required
-# def load_detail(request, load_id):
-#     """
-#     Display and edit load details + show stops
-
-#     Single view for both:
-#     - GET: Display current load state + editable form
-#     - POST: Update load fields (not status - that's via change_status view)
-
-#     WHY single view: Reduces code duplication. Edit form looks identical
-#     to detail view, just with editable fields instead of readonly text.
-
-#     V1 Rule:
-#     - Stops are editable only if load.can_edit_stops() is True.
-#       (Example: BOOKED and RC not uploaded yet.)
-#     - Once RC exists (or after DISPATCHED), stops are read-only.
-
-#     """
-#     # Get load or 404 if not found
-#     # WHY get_object_or_404: Better UX than generic 500 error
-#     load = get_object_or_404(Load, load_id=load_id)
-
-#     can_edit_stops = (
-#         request.user.role == "dispatcher" and load.status == Load.Status.BOOKED
-#     )
-
-#     if request.method == "POST":
-#         # Update existing load with form data
-#         # WHY instance=load: Pre-populates form with current values
-#         # here also form's __init__ runs
-#         form = LoadForm(request.POST, instance=load)
-
-#         if can_edit_stops:
-#             stop_formset = LoadStopFormSet(request.POST, instance=load)
-#         else:
-#             # Stops are locked; ignore stop updates even if posted (security)
-#             stop_formset = LoadStopFormSet(instance=load)
-
-#         if form.is_valid() and (not can_edit_stops or stop_formset.is_valid()):
-#             if not can_edit_stops:
-#                 form.save()
-#                 messages.success(request, "Load updated successfully.")
-#                 # Redirect back to same page (PRG pattern)
-#                 return redirect("load_detail", load_id=load.load_id)
-
-#             # If stops editable, validate V1 stop sanity
-#             stop_errors = _validate_stops_formset(stop_formset)
-#             if stop_errors:
-#                 for msg in stop_errors:
-#                     messages.error(request, msg)
-#             else:
-#                 with transaction.atomic():
-#                     form.save()
-#                     stop_formset.save()
-#                     messages.success(request, "Load and stops updated successfully.")
-#                     return redirect("load_detail", load_id=load.load_id)
-#     else:
-#         # GET request: Show form pre-filled with current load data
-#         # here also form's __init__ runs
-#         form = LoadForm(instance=load)
-#         stop_formset = LoadStopFormSet(instance=load)
-
-#     #  LoadDocument upload form (always shown, even on COMPLETED loads for audit)
-#     doc_form = DocumentUploadForm()
-
-#     # Get list of tracking agents for handover dropdown
-#     # WHY: Dispatcher selects who to handover load to
-#     tracking_agents = User.objects.filter(role="tracking_agent", is_active=True)
-
-#     # Get available actions for current user
-#     # WHY: Template uses this to show/hide action buttons
-#     available_actions = load.get_available_actions(request.user)
-
-#     # Related activity lists for sidebar/history panels
-#     tracking_updates = load.tracking_updates.all()
-#     reschedule_requests = load.reschedule_requests.all()
-
-#     # For read-only display
-#     stops = load.stops.order_by("sequence")
-
-#     return render(
-#         request,
-#         "tms/load_detail.html",
-#         {
-#             "load": load,
-#             "form": form,
-#             "doc_form": doc_form,
-#             "stops": stops,
-#             "stop_formset": stop_formset,
-#             "can_edit_stops": can_edit_stops,  # template uses this to show edit vs read-only UI
-#             "tracking_agents": tracking_agents,
-#             "available_actions": available_actions,
-#             "tracking_updates": tracking_updates,
-#             "reschedule_requests": reschedule_requests,
-#         },
-#     )
 
 
 @login_required
@@ -404,26 +361,8 @@ def change_status(request, load_id, action):
     """
     Handle status transition actions.
 
-    Route different actions to appropriate model methods:
-    - handover → load.handover_to_tracking()
-    - start_transit → load.start_transit()
-    - mark_delivered → load.mark_delivered()
-    - complete_load → load.complete_load()
-    - cancel → load.cancel()
-
-    WHY thin view: All business logic in model methods. View just:
-    1. Gets load from database
-    2. Calls appropriate model method
-    3. Catches errors and shows messages
-    4. Redirects back
-
-    Error Handling:
-    - Model methods raise ValueError if preconditions not met
-    - View catches error and displays user-friendly message
-    - User sees error, fixes issue, tries again
-
-    This keeps validation logic in model (testable, reusable) while
-    view handles HTTP concerns (request/response/redirect).
+    should remain a view as it handles HTTP concerns ,
+    but should call service methods
     """
     load = get_object_or_404(Load, load_id=load_id)
 
@@ -443,27 +382,28 @@ def change_status(request, load_id, action):
             instructions = request.POST.get("instructions", "")
 
             # Call model methos( raises ValueError if preconsitions not met)
-            load.handover_to_tracking(
-                tracking_agent=tracking_agent, instructions=instructions
+            handover_to_tracking(
+                load=load,
+                tracking_agent=tracking_agent,
+                from_agent=request.user,
+                instructions=instructions,
             )
 
-            messages.success(
-                request, f"Load handed over to {tracking_agent.get_full_name()},"
-            )
+            agent_name = tracking_agent.get_full_name() or tracking_agent.username
+            messages.success(request, f"Load handed over to {agent_name},")
 
         elif action == "start_transit":
-            # No extra parameters needed
-            load.start_transit()
+            start_transit(load)
             messages.success(request, "Load marked as In Transit")
 
         elif action == "mark_delivered":
             # Model validates required documents (POD, BOL)
-            load.mark_delivered()
+            mark_delivered(load)
             messages.success(request, "Load marked as Delivered.")
 
         elif action == "complete_load":
             # Final completion - ready for billing
-            load.complete_load()
+            complete_load(load)
             messages.success(request, "Load completed and ready for billing.")
 
         elif action == "cancel":
@@ -471,14 +411,14 @@ def change_status(request, load_id, action):
             reason = request.POST.get("reason", "")
 
             # call cancel method ( auto-creates TONU charge)
-            load.cancel(reason=reason)
+            cancel_load(load=load, reason=reason)
             messages.warning(request, "Load cancelled. TONU charge created.")
 
         else:
             # Unknown action ( shouldn't happen if URLs are correct)
             messages.error(request, f"Unknown action: {action}")
 
-    except ValueError as e:
+    except ServiceError as e:
         # Model method raised error (preconditions not met)
         # WHY: Show error to user so they know what to fix
         messages.error(request, str(e))
@@ -565,116 +505,146 @@ def drivers_list(request):
 
 @login_required
 def active_loads(request):
-    """List active loads for tracking"""
+    """List active loads assigned to the tracking agent"""
+    # Only show loads assigned to this tracking agent
     loads = (
-        Load.objects.filter(status__in=[Load.Status.DISPATCHED, Load.Status.IN_TRANSIT])
+        Load.objects.filter(
+            tracking_agent=request.user,
+            status__in=[Load.Status.DISPATCHED, Load.Status.IN_TRANSIT],
+        )
         .select_related("broker", "carrier", "truck", "driver")
+        .prefetch_related("stops", "documents")
         .order_by("-created_at")
     )
     context = {"loads": loads}
-    # TODO: create loads_list.html
     return render(request, "tms/active_loads.html", context)
 
 
-# @login_required
-# def create_tracking_update(request, load_id):
-#     """Create a tracking update for a load (tracking agents only)."""
-#     load = get_object_or_404(Load, load_id=load_id)
+@login_required
+def create_tracking_update(request, load_id):
+    """Create a tracking update for a load (tracking agents only)."""
+    load = get_object_or_404(Load, load_id=load_id)
 
-#     if request.user.role != "tracking_agent":
-#         messages.error(request, "Only tracking agents can add tracking updates.")
-#         return redirect("load_detail", load_id=load.load_id)
+    if request.user.role != "tracking_agent":
+        messages.error(request, "Only tracking agents can add tracking updates.")
+        return redirect("load_detail", load_id=load.load_id)
 
-#     if request.method == "POST":
-#         form = TrackingUpdateForm(request.POST)
-#         if form.is_valid():
-#             tu = form.save(commit=False)
-#             tu.load = load
-#             tu.tracking_agent = request.user
-#             # If not delayed, clear delay_reason and new_eta
-#             if not tu.is_delayed:
-#                 tu.delay_reason = ""
-#                 tu.new_eta = None
-#             tu.save()
-#             messages.success(request, "Tracking update added.")
-#             return redirect("load_detail", load_id=load.load_id)
-#     else:
-#         form = TrackingUpdateForm()
+    if request.method == "POST":
+        form = TrackingUpdateForm(request.POST)
+        if form.is_valid():
+            tu = form.save(commit=False)
+            tu.load = load
+            tu.tracking_agent = request.user
+            # If not delayed, clear delay_reason and new_eta
+            if not tu.is_delayed:
+                tu.delay_reason = ""
+                tu.new_eta = None
+            tu.save()
+            messages.success(request, "Tracking update added.")
+            return redirect("load_detail", load_id=load.load_id)
+    else:
+        form = TrackingUpdateForm()
 
-#     return render(
-#         request,
-#         "tms/tracking_update_form.html",
-#         {"form": form, "load": load},
-#     )
-
-
-# @login_required
-# def create_reschedule_request(request, load_id):
-#     """
-#     Create a reschedule request. Prefills original_appointment from load.delivery_datetime
-#     and new_appointment from latest tracking update's new_eta when available.
-#     """
-#     load = get_object_or_404(Load, load_id=load_id)
-
-#     if request.user.role not in ["tracking_agent", "dispatcher"]:
-#         messages.error(request, "Not authorized to create reschedule requests.")
-#         return redirect("load_detail", load_id=load.load_id)
-
-#     # Prefill values
-#     latest_update = load.tracking_updates.first()
-#     initial = {
-#         "original_appointment": load.delivery_datetime,
-#         "new_appointment": latest_update.new_eta if latest_update else None,
-#     }
-
-#     if request.method == "POST":
-#         form = RescheduleRequestForm(request.POST)
-#         if form.is_valid():
-#             rr = form.save(commit=False)
-#             rr.load = load
-#             rr.created_by = request.user
-#             rr.save()
-#             messages.success(request, "Reschedule request created.")
-#             return redirect("load_detail", load_id=load.load_id)
-#     else:
-#         form = RescheduleRequestForm(initial=initial)
-
-#     return render(
-#         request,
-#         "tms/reschedule_request_form.html",
-#         {"form": form, "load": load},
-#     )
+    return render(
+        request,
+        "tms/tracking_update_form.html",
+        {"form": form, "load": load},
+    )
 
 
-# @login_required
-# @require_POST
-# def edit_reschedule_approvals(request, load_id, request_id):
-#     """
-#     Update approval checkboxes for a reschedule request. When all three are approved,
-#     the model save() will apply the new appointment to the load.
-#     """
-#     load = get_object_or_404(Load, load_id=load_id)
-#     rr = get_object_or_404(RescheduleRequest, id=request_id, load=load)
+@login_required
+def create_reschedule_request(request, load_id):
+    """
+    Create a new reschedule request for a specific stop on a load.
 
-#     if request.user.role not in ["dispatcher", "tracking_agent"]:
-#         messages.error(request, "Not authorized to update approvals.")
-#         return redirect("load_detail", load_id=load.load_id)
+    GET: Show blank form with stop dropdown
+    POST: Save new reschedule request with original appointment snapshot from selected stop
+    """
+    load = get_object_or_404(Load, load_id=load_id)
 
-#     # Update from POST checkboxes (present when checked)
-#     rr.consignee_approved = bool(request.POST.get("consignee_approved"))
-#     rr.broker_approved = bool(request.POST.get("broker_approved"))
-#     rr.manager_approved = bool(request.POST.get("manager_approved"))
-#     rr.save()
+    if request.user.role not in ["tracking_agent", "dispatcher"]:
+        messages.error(request, "Not authorized to create reschedule requests.")
+        return redirect("load_detail", load_id=load.load_id)
 
-#     if rr.is_fully_approved:
-#         messages.success(
-#             request,
-#             "Reschedule fully approved. Delivery appointment updated on the load.",
-#         )
-#     else:
-#         messages.info(request, "Reschedule approvals updated.")
+    if request.method == "POST":
+        # Create instance with load and user pre-set for validation
+        rr_instance = RescheduleRequest(load=load, created_by=request.user)
+        form = RescheduleRequestForm(load, request.POST, instance=rr_instance)
 
-#     return redirect("load_detail", load_id=load.load_id)
+        if form.is_valid():
+            rr = form.save(commit=False)
+
+            # Snapshot original appointment window from the selected stop
+            stop = form.cleaned_data["stop"]
+            rr.original_appt_start = stop.appt_start
+            rr.original_appt_end = stop.appt_end
+
+            rr.save()
+            messages.success(
+                request, f"Reschedule request created for {stop.facility.name}."
+            )
+            return redirect("load_detail", load_id=load.load_id)
+    else:
+        form = RescheduleRequestForm(load)
+
+    return render(
+        request,
+        "tms/reschedule_request_form.html",
+        {"form": form, "load": load, "edit_mode": False},
+    )
+
+
+@login_required
+def edit_reschedule_approvals(request, load_id, request_id):
+    """
+    Edit an existing reschedule request.
+
+    GET: Show form pre-filled with existing reschedule request data
+    POST: Update reschedule request including approvals and appointment details
+    """
+    load = get_object_or_404(Load, load_id=load_id)
+    rr = get_object_or_404(RescheduleRequest, id=request_id, load=load)
+
+    if request.user.role not in ["dispatcher", "tracking_agent"]:
+        messages.error(request, "Not authorized to update reschedule requests.")
+        return redirect("load_detail", load_id=load.load_id)
+
+    if request.method == "POST":
+        form = RescheduleRequestForm(load, request.POST, instance=rr)
+
+        if form.is_valid():
+            rr = form.save(commit=False)
+
+            # Update original appointment snapshot from selected stop (in case stop changed)
+            stop = form.cleaned_data["stop"]
+            rr.original_appt_start = stop.appt_start
+            rr.original_appt_end = stop.appt_end
+
+            # Manual override for approval checkboxes (form may not capture unchecked state properly)
+            rr.consignee_approved = bool(request.POST.get("consignee_approved"))
+            rr.broker_approved = bool(request.POST.get("broker_approved"))
+            rr.manager_approved = bool(request.POST.get("manager_approved"))
+
+            rr.save()
+
+            if rr.is_fully_approved:
+                messages.success(
+                    request,
+                    "Reschedule fully approved. Appointment updated on stop.",
+                )
+            else:
+                messages.success(request, "Reschedule request updated.")
+
+            return redirect("load_detail", load_id=load.load_id)
+    else:
+        # GET: Pre-fill form with existing reschedule request
+        form = RescheduleRequestForm(load, instance=rr)
+
+    return render(
+        request,
+        "tms/reschedule_request_form.html",
+        {"form": form, "load": load, "edit_mode": True, "request_id": rr.id},
+    )
 
 
 # ============================================================================
@@ -682,158 +652,271 @@ def active_loads(request):
 # ============================================================================
 
 
-# @login_required
-# def create_accessorial(request, load_id):
-#     """
-#     Create accessorial charge for a load.
-#     """
+@login_required
+def create_accessorial(request, load_id):
+    """
+    Create accessorial charge for a load.
+    """
 
-#     load = get_object_or_404(Load, load_id=load_id)
+    load = get_object_or_404(Load, load_id=load_id)
 
-#     # Check permissions
-#     if request.user.role not in ["dispatcher", "tracking_agent"]:
-#         messages.error(request, "Not authorized to add charges.")
-#         return redirect("load_detail", load_id=load.load_id)
+    # Check permissions
+    if request.user.role not in ["dispatcher", "tracking_agent"]:
+        messages.error(request, "Not authorized to add charges.")
+        return redirect("load_detail", load_id=load.load_id)
 
-#     if request.method == "POST":
-#         form = AccessorialForm(request.POST)
+    if request.method == "POST":
+        form = AccessorialForm(request.POST)
 
-#         if form.is_valid():
-#             accessorial = form.save(commit=False)
-#             accessorial.load = load
-#             accessorial.created_by = request.user
-#             accessorial.save()
+        if form.is_valid():
+            accessorial = form.save(commit=False)
+            accessorial.load = load
+            accessorial.created_by = request.user
+            accessorial.save()
 
-#             messages.success(request, "Charge added.")
-#             return redirect("load_detail", load_id=load.load_id)
-#         else:
-#             messages.error(request, "Please correct the errors below.")
+            messages.success(request, "Charge added.")
+            return redirect("load_detail", load_id=load.load_id)
+        else:
+            messages.error(request, "Please correct the errors below.")
 
-#     else:
-#         # GET: Show form page
-#         form = AccessorialForm()
+    else:
+        # GET: Show form page
+        form = AccessorialForm()
 
-#     return render(
-#         request,
-#         "tms/accessorial_form.html",
-#         {"form": form, "load": load, "mode": "create"},
-#     )
-
-
-# @login_required
-# def edit_accessorial(request, load_id, pk):
-#     load = get_object_or_404(Load, load_id=load_id)
-#     accessorial = get_object_or_404(Accessorial, pk=pk, load=load)
-
-#     # Check permissions
-#     if request.user.role not in ["dispatcher", "tracking_agent"]:
-#         messages.error(request, "Not authorized to edit charges.")
-#         return redirect("load_detail", load_id=load.load_id)
-#     if request.method == "POST":
-#         form = AccessorialForm(request.POST, instance=accessorial)
-
-#         if form.is_valid():
-#             form.save()
-#             messages.success(request, "Charge updated.")
-#             return redirect("load_detail", load_id=load.load_id)
-#         else:
-#             messages.error(request, "Please correct the errors below.")
-#     else:
-#         # GET: Show form page
-#         form = AccessorialForm(instance=accessorial)
-
-#     return render(
-#         request,
-#         "tms/accessorial_form.html",
-#         {"form": form, "load": load, "mode": "edit", "charge": accessorial},
-#     )
+    return render(
+        request,
+        "tms/accessorial_form.html",
+        {"form": form, "load": load, "mode": "create"},
+    )
 
 
-# @login_required
-# def accessorial_charge_type_fields(request):
-#     charge_type = request.GET.get("charge_type")
-#     charge_id = request.GET.get("charge_id")  # Optional, for edit forms
+@login_required
+def edit_accessorial(request, load_id, pk):
+    load = get_object_or_404(Load, load_id=load_id)
+    accessorial = get_object_or_404(Accessorial, pk=pk, load=load)
 
-#     accessorial = None
-#     if charge_id:
-#         accessorial = get_object_or_404(Accessorial, id=charge_id)
+    # Check permissions
+    if request.user.role not in ["dispatcher", "tracking_agent"]:
+        messages.error(request, "Not authorized to edit charges.")
+        return redirect("load_detail", load_id=load.load_id)
+    if request.method == "POST":
+        form = AccessorialForm(request.POST, instance=accessorial)
 
-#     return render(
-#         request,
-#         "tms/partials/accessorial_charge_type_fields.html",
-#         {
-#             "charge_type": charge_type,
-#             "charge": accessorial,
-#         },
-#     )
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Charge updated.")
+            return redirect("load_detail", load_id=load.load_id)
+        else:
+            messages.error(request, "Please correct the errors below.")
+    else:
+        # GET: Show form page
+        form = AccessorialForm(instance=accessorial)
 
-
-# @login_required
-# def create_duty_log_view(request, load_id):
-#     load = get_object_or_404(Load, load_id=load_id)
-
-#     if request.user.role != "tracking_agent":
-#         messages.error(request, "Only tracking agents can add duty logs.")
-#         return redirect("load_detail", load_id=load.load_id)
-
-#     driver = load.driver
-#     if not driver:
-#         messages.error(request, "Load has no assigned driver.")
-#         return redirect("load_detail", load_id=load.load_id)
-
-#     if request.method == "POST":
-#         form = DutyLogForm(request.POST)
-#         if form.is_valid():
-#             log = form.save(commit=False)
-#             log.driver = driver
-#             log.truck = load.truck
-#             log.created_by = request.user
-
-#             try:
-#                 create_duty_log(log=log)
-#                 messages.success(request, "Duty log created successfully.")
-#             except ValidationError as e:
-#                 messages.error(request, f"Error creating duty log: {e.messages[0]}")
-
-#             return redirect("load_detail", load_id=load.load_id)
-#     else:
-#         form = DutyLogForm(initial={"start_time": timezone.now()})
-
-#     return render(
-#         request,
-#         "tms/duty_log_form.html",
-#         {"form": form, "load": load},
-#     )
+    return render(
+        request,
+        "tms/accessorial_form.html",
+        {"form": form, "load": load, "mode": "edit", "charge": accessorial},
+    )
 
 
-# @login_required
-# def driver_hos_summary(request, driver_id):
-#     driver = get_object_or_404(Driver, id=driver_id)
-#     summary = HOSCalculator(driver).summary()
+@login_required
+def accessorial_charge_type_fields(request):
+    charge_type = request.GET.get("charge_type")
+    charge_id = request.GET.get("charge_id")  # Optional, for edit forms
 
-#     # Format timedeltas to human-readable strings for template display
-#     def format_timedelta(td):
-#         if not td:
-#             return "0h 0m"
-#         total_seconds = int(td.total_seconds())
-#         hours = total_seconds // 3600
-#         minutes = (total_seconds % 3600) // 60
-#         return f"{hours}h {minutes}m"
+    accessorial = None
+    if charge_id:
+        accessorial = get_object_or_404(Accessorial, id=charge_id)
 
-#     # Convert timedeltas to formatted strings
-#     formatted_summary = {
-#         "driving_today": format_timedelta(summary.get("driving_today")),
-#         "driving_remaining": format_timedelta(summary.get("driving_remaining")),
-#         "cycle_remaining": format_timedelta(summary.get("cycle_remaining")),
-#         "break_required": summary.get("break_required", False),
-#         "warnings": summary.get("warnings", []),
-#     }
+    return render(
+        request,
+        "tms/partials/accessorial_charge_type_fields.html",
+        {
+            "charge_type": charge_type,
+            "charge": accessorial,
+        },
+    )
 
-#     return render(
-#         request,
-#         "tms/partials/driver_hos_summary.html",
-#         {
-#             "driver": driver,
-#             "summary": formatted_summary,
-#         },
-#     )
+
+# DUTY LOG
+
+
+@login_required
+def create_duty_log_view(request, load_id):
+    load = get_object_or_404(Load, load_id=load_id)
+
+    if request.user.role != "tracking_agent":
+        messages.error(request, "Only tracking agents can add duty logs.")
+        return redirect("load_detail", load_id=load.load_id)
+
+    driver = load.driver
+    if not driver:
+        messages.error(request, "Load has no assigned driver.")
+        return redirect("load_detail", load_id=load.load_id)
+
+    if request.method == "POST":
+        form = DutyLogForm(request.POST)
+        if form.is_valid():
+            log = form.save(commit=False)
+            log.driver = driver
+            log.truck = load.truck
+            log.created_by = request.user
+
+            try:
+                create_duty_log(log=log)
+                messages.success(request, "Duty log created successfully.")
+            except ValidationError as e:
+                messages.error(request, f"Error creating duty log: {e.messages[0]}")
+
+            return redirect("load_detail", load_id=load.load_id)
+    else:
+        form = DutyLogForm(initial={"start_time": timezone.now()})
+
+    return render(
+        request,
+        "tms/duty_log_form.html",
+        {"form": form, "load": load},
+    )
+
+
+@login_required
+def driver_hos_summary(request, driver_id):
+    driver = get_object_or_404(Driver, id=driver_id)
+    summary = HOSCalculator(driver).summary()
+
+    # Format timedeltas to human-readable strings for template display
+    def format_timedelta(td):
+        if not td:
+            return "0h 0m"
+        total_seconds = int(td.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        return f"{hours}h {minutes}m"
+
+    # Convert timedeltas to formatted strings
+    formatted_summary = {
+        "driving_today": format_timedelta(summary.get("driving_today")),
+        "driving_remaining": format_timedelta(summary.get("driving_remaining")),
+        "cycle_remaining": format_timedelta(summary.get("cycle_remaining")),
+        "break_required": summary.get("break_required", False),
+        "warnings": summary.get("warnings", []),
+    }
+
+    return render(
+        request,
+        "tms/partials/driver_hos_summary.html",
+        {
+            "driver": driver,
+            "summary": formatted_summary,
+        },
+    )
+
+
+# ============================================================================
+# STOP TRACKING ACTIONS (V1)
+# ============================================================================
+
+
+@login_required
+def stop_edit(request, stop_id):
+    """
+    Edit a LoadStop - check in, complete, or skip.
+    GET: Show form pre-filled with current stop data
+    POST: Save changes and redirect back to load_detail
+    """
+    stop = get_object_or_404(LoadStop, id=stop_id)
+    load = stop.load
+
+    # Simple permission check
+    if request.user.role != "tracking_agent":
+        return redirect("dashboard")
+
+    if load.status not in [Load.Status.DISPATCHED, Load.Status.IN_TRANSIT]:
+        messages.error(request, "Load not in transit")
+        return redirect("load_detail", load_id=load.load_id)
+
+    if request.method == "POST":
+        action = request.POST.get("action")  # check_in, complete, or skip
+
+        if action == "check_in":
+            arrival_time_str = request.POST.get("arrival_time")
+            if arrival_time_str:
+                from django.utils.dateparse import parse_datetime
+
+                arrival_time = parse_datetime(arrival_time_str)
+                if arrival_time:
+                    stop.check_in(arrival_time=arrival_time)
+                    messages.success(
+                        request,
+                        f"Checked in at {stop.facility.name}",
+                    )
+                else:
+                    messages.error(request, "Invalid arrival time format")
+            else:
+                stop.check_in()
+                messages.success(request, f"Checked in at {stop.facility.name}")
+
+        elif action == "complete":
+            departure_time_str = request.POST.get("departure_time")
+            if departure_time_str:
+                from django.utils.dateparse import parse_datetime
+
+                departure_time = parse_datetime(departure_time_str)
+                if departure_time:
+                    stop.mark_completed(departure_time=departure_time)
+                    messages.success(
+                        request,
+                        f"Completed stop at {stop.facility.name}",
+                    )
+                else:
+                    messages.error(request, "Invalid departure time format")
+            else:
+                stop.mark_completed()
+                messages.success(request, f"Completed stop at {stop.facility.name}")
+
+        elif action == "skip":
+            stop.mark_skipped()
+            messages.success(request, f"Skipped stop at {stop.facility.name}")
+
+        return redirect("load_detail", load_id=load.load_id)
+
+    # GET: Show form
+    from django.utils import timezone
+
+    context = {
+        "stop": stop,
+        "load": load,
+        "current_time": timezone.now().strftime("%Y-%m-%dT%H:%M"),
+    }
+    return render(request, "tms/stop_form.html", context)
+
+
+# HTMX endpoints
+def search_brokers(request):
+    """Search brokers by name"""
+    query = request.GET.get("q", "").strip()
+    print(f"Search query: {query}")
+
+    if not query:
+        brokers = Broker.objects.none()
+    else:
+        brokers = Broker.objects.filter(name__icontains=query).only("id", "name")[:20]
+
+    print(brokers)
+
+    return render(request, "tms/partials/_broker_options.html", {"brokers": brokers})
+
+
+def search_facilities(request):
+    """Search facility by name"""
+    query = request.GET.get("q", "").strip()
+    if not query:
+        facilities = Facility.objects.none()
+    else:
+        facilities = Facility.objects.filter(name__icontains=query).only(
+            "id", "name", "city"
+        )[:20]
+
+    return render(
+        request, "tms/partials/_facility_options.html", {"facilities": facilities}
+    )

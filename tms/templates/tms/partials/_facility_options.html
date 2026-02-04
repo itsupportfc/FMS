@@ -1,0 +1,10 @@
+{% for facility in facilities %}
+    <div class="facility-option"
+         data-id="{{ facility.id }}"
+         data-name="{{ facility.name }}">
+        <div class="font-semibold">{{ facility.name }}</div>
+        <div class="text-sm text-gray-600">{{ facility.city }}</div>
+    </div>
+{% empty %}
+    <div class="text-gray-500 text-sm p-2">No facilities found.</div>
+{% endfor %}

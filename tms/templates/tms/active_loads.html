@@ -1,48 +1,54 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <div class="max-w-6xl mx-auto">
-        <div class="flex items-center justify-between mb-6">
-            <h1 class="page-header">Active Loads</h1>
-            <p class="text-[13px] text-gray-600">Loads in dispatch or transit, ordered by newest.</p>
+    <!-- Full-width header spanning the main content area -->
+    <div class="page-header mb-6 px-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Active Loads</h1>
+                <p class="text-sm text-gray-600">Loads assigned to you (dispatched or in transit)</p>
+            </div>
         </div>
+    </div>
+
+    <div class="max-w-[1600px] mx-auto px-8 pb-10">
 
         {% if loads %}
-            <div class="overflow-x-auto bg-white border border-gray-300 rounded-lg">
-                <table class="min-w-full text-sm text-left text-gray-800">
-                    <thead class="bg-gray-100 border-b border-gray-300 text-xs uppercase text-gray-600">
+            <div class="card overflow-hidden p-0">
+                <table class="min-w-full text-[15px] text-left text-gray-800">
+                    <thead class="bg-gray-50 border-b border-gray-200">
                         <tr>
-                            <th class="px-4 py-2">Load ID</th>
-                            <th class="px-4 py-2">Status</th>
-                            <th class="px-4 py-2">Broker</th>
-                            <th class="px-4 py-2">Carrier</th>
-                            <th class="px-4 py-2">Driver</th>
-                            <th class="px-4 py-2">From</th>
-                            <th class="px-4 py-2">To</th>
-                            <th class="px-4 py-2 text-right">Actions</th>
+                            <th class="table-header px-6 py-3">Load ID</th>
+                            <th class="table-header px-6 py-3">Broker</th>
+                            <th class="table-header px-6 py-3">Carrier</th>
+                            <th class="table-header px-6 py-3">Driver</th>
+                            <th class="table-header px-6 py-3">Pickup</th>
+                            <th class="table-header px-6 py-3">Delivery</th>
+                            <th class="table-header px-6 py-3">Status</th>
+                            <th class="table-header px-6 py-3 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for load in loads %}
-                            <tr class="border-b border-gray-200 hover:bg-gray-50">
-                                <td class="px-4 py-2 font-medium text-gray-900">{{ load.load_id }}</td>
-                                <td class="px-4 py-2">
+                            <tr class="border-b border-gray-200 hover:bg-gray-50 transition-colors">
+                                <td class="table-cell px-6 py-4 font-semibold text-gray-900">{{ load.load_id }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.broker.name }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.carrier.name|default:"—" }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.driver.full_name|default:"—" }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.origin }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.destination }}</td>
+                                <td class="table-cell px-6 py-4">
                                     {% if load.status == 'dispatched' %}
-                                        <span class="badge-blue">Dispatched</span>
+                                        <span class="badge-blue">{{ load.get_status_display }}</span>
                                     {% elif load.status == 'in_transit' %}
-                                        <span class="badge-amber">In Transit</span>
+                                        <span class="badge-amber">{{ load.get_status_display }}</span>
                                     {% else %}
                                         {{ load.get_status_display }}
                                     {% endif %}
                                 </td>
-                                <td class="px-4 py-2">{{ load.broker.name }}</td>
-                                <td class="px-4 py-2">{{ load.carrier.name|default:"—" }}</td>
-                                <td class="px-4 py-2">{{ load.driver.full_name|default:"—" }}</td>
-                                <td class="px-4 py-2">{{ load.pickup_facility.city }}, {{ load.pickup_facility.state }}</td>
-                                <td class="px-4 py-2">{{ load.delivery_facility.city }}, {{ load.delivery_facility.state }}</td>
-                                <td class="px-4 py-2 text-right">
+                                <td class="table-cell px-6 py-4 text-right">
                                     <a href="{% url 'load_detail' load.load_id %}"
-                                       class="text-sm text-gray-900 hover:underline">View</a>
+                                       class="text-green-600 hover:text-green-700 font-medium hover:underline">View</a>
                                 </td>
                             </tr>
                         {% endfor %}
@@ -50,7 +56,9 @@
                 </table>
             </div>
         {% else %}
-            <p class="text-sm text-gray-600">No active loads.</p>
+            <div class="card text-center py-12">
+                <p class="text-[15px] text-gray-600">No active loads assigned to you.</p>
+            </div>
         {% endif %}
     </div>
 

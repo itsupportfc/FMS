@@ -1,5 +1,7 @@
+{% load form_filters %}
+
 {# tms/partials/_stop_row.html #}
-<div data-stop-row class="border border-gray-200 rounded-lg p-5 bg-white">
+<div data-stop-row class="card">
     {# ✅ OOB: updates the existing management input rendered by management_form #}
     <input type="hidden"
            id="id_stops-TOTAL_FORMS"
@@ -7,59 +9,147 @@
            value="{{ next_total }}"
            hx-swap-oob="true" />
 
-    {% if stop_form.non_field_errors %}<div class="alert-error mb-3">{{ stop_form.non_field_errors }}</div>{% endif %}
+    {{ stop_form.id }}
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    {# FORM-LEVEL ERRORS #}
+    {% if stop_form.non_field_errors %}
+        <div class="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 mb-6">
+            {% for error in stop_form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+        </div>
+    {% endif %}
+
+    {# STOP DETAILS - MAIN ROW #}
+    <div class="grid grid-cols-3 gap-6">
         <div>
             <label class="form-label" for="{{ stop_form.stop_type.id_for_label }}">Stop Type</label>
-            {{ stop_form.stop_type }}
-            {% for e in stop_form.stop_type.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+            {% with field=stop_form.stop_type %}
+                <select name="{{ field.html_name }}"
+                        id="{{ field.auto_id }}"
+                        class="form-select">
+                    <option value="">---------</option>
+                    {% for value, label in field.field.choices %}
+                        {% if value %}
+                            <option value="{{ value }}" {% if field.value == value %}selected{% endif %}>{{ label }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            {% endwith %}
+            {% if stop_form.stop_type.errors %}<p class="form-error">{{ stop_form.stop_type.errors.0 }}</p>{% endif %}
         </div>
+
+        {% comment %} <div>
+            <label class="form-label" for="{{ stop_form.facility.id_for_label }}">Facility</label>
+            {% with field=stop_form.facility %}
+                <select name="{{ field.html_name }}" id="{{ field.auto_id }}" class="form-select">
+                    <option value="">---------</option>
+                    {% for value, label in field.field.choices %}
+                        {% if value %}
+                            <option value="{{ value }}" {% if field.value == value %}selected{% endif %}>{{ label }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            {% endwith %}
+            {% if stop_form.facility.errors %}<p class="form-error">{{ stop_form.facility.errors.0 }}</p>{% endif %}
+        </div> {% endcomment %}
 
         <div>
-            <label class="form-label" for="{{ stop_form.facility.id_for_label }}">Facility</label>
-            {{ stop_form.facility }}
-            {% for e in stop_form.facility.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
-        </div>
+            <label for="facility_search_{{ stop_form.prefix }}" class="form-label">Facility</label>
+            <!-- Visible search input -->
+            <input type="text"
+                   id="facility_search_{{ stop_form.prefix }}"
+                   name="q"
+                   placeholder="Search facility by name..."
+                   class="form-input facility-search"
+                   hx-get="{% url 'search_facilities' %}"
+                   hx-trigger="keyup changed delay:300ms"
+                   hx-target="#facility_results_{{ stop_form.prefix }}"
+                   autocomplete="off" />
 
+            <!-- Hidden field for form submission -->
+            <input type="hidden"
+                   id="facility_hidden_{{ stop_form.prefix }}"
+                   name="{{ stop_form.facility.html_name }}"
+                   value="">
+
+            <!-- Results dropdown -->
+            <div id="facility_results_{{ stop_form.prefix }}"
+                 class="hidden mt-2 border border-gray-300 rounded bg-white shadow-lg max-h-48 overflow-y-auto"></div>
+
+            {% if stop_form.facility.errors %}<p class="form-error">{{ stop_form.facility.errors.0 }}</p>{% endif %}
+
+        </div>
         <div>
             <label class="form-label"
                    for="{{ stop_form.appointment_type.id_for_label }}">Appointment Type</label>
-            {{ stop_form.appointment_type }}
-            {% for e in stop_form.appointment_type.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
-            <div class="helper-text">FCFS by default. Select Appointment to enter times.</div>
+            {% with field=stop_form.appointment_type %}
+                <select name="{{ field.html_name }}"
+                        id="{{ field.auto_id }}"
+                        class="form-select">
+                    {% for value, label in field.field.choices %}
+                        <option value="{{ value }}" {% if field.value == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            {% endwith %}
+            {% if stop_form.appointment_type.errors %}
+                <p class="form-error">{{ stop_form.appointment_type.errors.0 }}</p>
+            {% endif %}
+            <p class="helper-text">FCFS by default. Select "Appointment" to enter specific times.</p>
         </div>
     </div>
 
-    <div data-appt-fields
-         hidden
-         class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+    {# APPOINTMENT TIMES #}
+    <div class="mt-6 grid grid-cols-2 gap-6 pt-6 border-t border-gray-200">
         <div>
-            <label class="form-label" for="{{ stop_form.appt_start.id_for_label }}">Appt Start</label>
-            {{ stop_form.appt_start }}
-            {% for e in stop_form.appt_start.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+            <label class="form-label" for="{{ stop_form.appt_start.id_for_label }}">Appointment Start</label>
+            <input type="datetime-local"
+                   name="{{ stop_form.appt_start.html_name }}"
+                   id="{{ stop_form.appt_start.auto_id }}"
+                   class="form-input"
+                   value="{{ stop_form.appt_start.value|default:'' }}"
+                   step="60" />
+            {% if stop_form.appt_start.errors %}<p class="form-error">{{ stop_form.appt_start.errors.0 }}</p>{% endif %}
+            <p class="helper-text">Leave blank for FCFS stops</p>
         </div>
 
         <div>
-            <label class="form-label" for="{{ stop_form.appt_end.id_for_label }}">Appt End</label>
-            {{ stop_form.appt_end }}
-            {% for e in stop_form.appt_end.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
-        </div>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-        <div>
-            <label class="form-label" for="{{ stop_form.weight.id_for_label }}">Weight</label>
-            {{ stop_form.weight }}
-            {% for e in stop_form.weight.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
-        </div>
-
-        <div>
-            <label class="form-label" for="{{ stop_form.notes.id_for_label }}">Notes</label>
-            {{ stop_form.notes }}
-            {% for e in stop_form.notes.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+            <label class="form-label" for="{{ stop_form.appt_end.id_for_label }}">Appointment End</label>
+            <input type="datetime-local"
+                   name="{{ stop_form.appt_end.html_name }}"
+                   id="{{ stop_form.appt_end.auto_id }}"
+                   class="form-input"
+                   value="{{ stop_form.appt_end.value|default:'' }}"
+                   step="60" />
+            {% if stop_form.appt_end.errors %}<p class="form-error">{{ stop_form.appt_end.errors.0 }}</p>{% endif %}
+            <p class="helper-text">Leave blank for FCFS stops</p>
         </div>
     </div>
 
-    {{ stop_form.id }}
+    {# WEIGHT & NOTES #}
+    <div class="mt-6 grid grid-cols-2 gap-6">
+        <div>
+            <label class="form-label" for="{{ stop_form.weight.id_for_label }}">Weight (lbs)</label>
+            <input type="number"
+                   name="{{ stop_form.weight.html_name }}"
+                   id="{{ stop_form.weight.auto_id }}"
+                   class="form-input"
+                   value="{{ stop_form.weight.value|default:'' }}" />
+            {% if stop_form.weight.errors %}<p class="form-error">{{ stop_form.weight.errors.0 }}</p>{% endif %}
+        </div>
+
+        <div>
+            <label class="form-label" for="{{ stop_form.notes.id_for_label }}">Stop Notes</label>
+            <textarea name="{{ stop_form.notes.html_name }}"
+                      id="{{ stop_form.notes.auto_id }}"
+                      class="form-input">{{ stop_form.notes.value|default:'' }}</textarea>
+            {% if stop_form.notes.errors %}<p class="form-error">{{ stop_form.notes.errors.0 }}</p>{% endif %}
+        </div>
+    </div>
+
+    {# DELETE BUTTON #}
+    <div class="mt-6 flex gap-3 border-t border-gray-200 pt-6">
+        <button type="button"
+                class="btn-danger btn-sm"
+                hx-delete="javascript:void(0)"
+                onclick="this.closest('[data-stop-row]').remove()">Delete Stop</button>
+    </div>
 </div>

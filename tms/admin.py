@@ -5,12 +5,13 @@ from .models import (
     # Appointment,
     Broker,
     Carrier,
-    LoadDocument,
     Driver,
     DutyLog,
     Facility,
     Handover,
     Load,
+    LoadDocument,
+    LoadStop,
     RescheduleRequest,
     TrackingUpdate,
     Truck,
@@ -23,6 +24,7 @@ admin.site.register(Carrier)
 admin.site.register(Truck)
 admin.site.register(Driver)
 admin.site.register(Load)
+admin.site.register(LoadStop)
 admin.site.register(Accessorial)
 admin.site.register(LoadDocument)
 # admin.site.register(Appointment)

@@ -8,23 +8,21 @@
         <div class="space-y-3 mb-6">
             <p class="helper-text">Uploaded</p>
 
-            {# Show current docs first (your model supports is_current versioning) #}
+            {# Show all documents #}
             {% for doc in load.documents.all %}
-                {% if doc.is_current %}
-                    <div class="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 hover:bg-gray-100 transition">
-                        <div class="flex-1">
-                            <p class="text-xs font-medium text-gray-900">{{ doc.get_document_type_display }}</p>
-                            <p class="text-xs text-gray-600 mt-0.5">{{ doc.original_filename }}</p>
+                <div class="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 hover:bg-gray-100 transition">
+                    <div class="flex-1">
+                        <p class="text-xs font-medium text-gray-900">{{ doc.get_document_type_display }}</p>
+                        <p class="text-xs text-gray-600 mt-0.5">{{ doc.original_filename }}</p>
 
-                            {% if doc.description %}<p class="text-xs text-gray-500 mt-1">{{ doc.description }}</p>{% endif %}
-                        </div>
-
-                        <a href="{{ doc.file.url }}"
-                           target="_blank"
-                           rel="noopener"
-                           class="btn-ghost btn-sm">Download</a>
+                        {% if doc.description %}<p class="text-xs text-gray-500 mt-1">{{ doc.description }}</p>{% endif %}
                     </div>
-                {% endif %}
+
+                    <a href="{{ doc.file.url }}"
+                       target="_blank"
+                       rel="noopener"
+                       class="btn-ghost btn-sm">Download</a>
+                </div>
             {% endfor %}
         </div>
     {% else %}

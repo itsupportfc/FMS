@@ -36,8 +36,8 @@
                                 <td class="table-cell px-6 py-4">{{ load.broker.name }}</td>
                                 <td class="table-cell px-6 py-4">{{ load.carrier.name|default:"—" }}</td>
                                 <td class="table-cell px-6 py-4">{{ load.driver.full_name|default:"—" }}</td>
-                                <td class="table-cell px-6 py-4">{{ load.pickup_facility.name }}</td>
-                                <td class="table-cell px-6 py-4">{{ load.delivery_facility.name }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.origin }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.destination }}</td>
                                 <td class="table-cell px-6 py-4">
                                     {% if load.status == 'booked' %}
                                         <span class="badge-gray">{{ load.get_status_display }}</span>

@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="max-w-2xl mx-auto px-8 py-6">
+        <!-- Back Button -->
+        <a href="{% url 'load_detail' load.load_id %}"
+           class="text-blue-600 hover:text-blue-800 mb-4 inline-block">← Back to Load</a>
+
+        <div class="card">
+            <h2 class="card-header">Edit Stop - {{ load.load_id }}</h2>
+
+            <!-- Stop Info -->
+            <div class="mb-6 p-4 bg-gray-50 rounded">
+                <h3 class="font-semibold mb-3">Stop Information</h3>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <p class="text-gray-600">Stop</p>
+                        <p class="font-medium">{{ stop.sequence }} - {{ stop.get_stop_type_display }}</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">Location</p>
+                        <p class="font-medium">{{ stop.facility.name }}</p>
+                        <p class="text-gray-600">{{ stop.facility.city }}, {{ stop.facility.state }}</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">Appointment Type</p>
+                        <p class="font-medium">{{ stop.get_appointment_type_display }}</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">Current Status</p>
+                        <p class="font-medium">
+                            {% if stop.status == "completed" %}
+                                <span class="badge-green">COMPLETED</span>
+                            {% elif stop.status == "skipped" %}
+                                <span class="badge-gray">SKIPPED</span>
+                            {% else %}
+                                <span class="badge-amber">PENDING</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Form -->
+            <form method="post" class="space-y-6">
+                {% csrf_token %}
+
+                <!-- Action Selection -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-3">Select Action</label>
+
+                    {% if stop.status == "pending" %}
+                        {% if not stop.arrived_at %}
+                            <!-- Check In Action -->
+                            <div class="border rounded p-4 mb-4">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio"
+                                           name="action"
+                                           value="check_in"
+                                           class="mr-3"
+                                           onchange="document.getElementById('check-in-section').style.display='block'; document.getElementById('complete-section').style.display='none'; document.getElementById('skip-section').style.display='none';" />
+                                    <span class="font-medium">Check In at Stop</span>
+                                </label>
+                                <p class="text-sm text-gray-600 mt-1 ml-6">Record arrival time at this facility</p>
+                            </div>
+
+                            <!-- Check In Fields -->
+                            <div id="check-in-section"
+                                 style="display: none"
+                                 class="mb-4 p-4 bg-blue-50 rounded">
+                                <label for="arrival_time"
+                                       class="block text-sm font-medium text-gray-700 mb-2">Arrival Time</label>
+                                <input type="datetime-local"
+                                       id="arrival_time"
+                                       name="arrival_time"
+                                       value="{{ current_time }}"
+                                       class="form-input w-full" />
+                                <p class="helper-text mt-1">Current time is pre-filled. Adjust if needed for late arrival.</p>
+                            </div>
+                        {% else %}
+                            <!-- Mark Complete Action -->
+                            <div class="border rounded p-4 mb-4">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio"
+                                           name="action"
+                                           value="complete"
+                                           class="mr-3"
+                                           onchange="document.getElementById('check-in-section').style.display='none'; document.getElementById('complete-section').style.display='block'; document.getElementById('skip-section').style.display='none';" />
+                                    <span class="font-medium">Mark Complete</span>
+                                </label>
+                                <p class="text-sm text-gray-600 mt-1 ml-6">Record departure time from this facility</p>
+                            </div>
+
+                            <!-- Complete Fields -->
+                            <div id="complete-section"
+                                 style="display: none"
+                                 class="mb-4 p-4 bg-green-50 rounded">
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-2">
+                                        <strong>Arrived:</strong> {{ stop.arrived_at|date:"M d, Y H:i" }}
+                                    </p>
+                                </div>
+                                <label for="departure_time"
+                                       class="block text-sm font-medium text-gray-700 mb-2">Departure Time</label>
+                                <input type="datetime-local"
+                                       id="departure_time"
+                                       name="departure_time"
+                                       value="{{ current_time }}"
+                                       class="form-input w-full" />
+                                <p class="helper-text mt-1">Current time is pre-filled. Adjust if needed.</p>
+                            </div>
+                        {% endif %}
+
+                        <!-- Skip Action (always available for pending) -->
+                        <div class="border rounded p-4">
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio"
+                                       name="action"
+                                       value="skip"
+                                       class="mr-3"
+                                       onchange="document.getElementById('check-in-section').style.display='none'; document.getElementById('complete-section').style.display='none'; document.getElementById('skip-section').style.display='block';" />
+                                <span class="font-medium">Skip Stop</span>
+                            </label>
+                            <p class="text-sm text-gray-600 mt-1 ml-6">Mark this stop as skipped</p>
+                        </div>
+
+                        <div id="skip-section"
+                             style="display: none"
+                             class="mt-4 p-4 bg-yellow-50 rounded">
+                            <p class="text-sm text-gray-700">
+                                This stop will be marked as <strong>SKIPPED</strong> and no timestamps will be recorded.
+                            </p>
+                        </div>
+                    {% else %}
+                        <!-- Stop already completed or skipped -->
+                        <div class="p-4 bg-gray-100 rounded">
+                            <p class="text-gray-700">
+                                This stop is <strong>{{ stop.get_status_display|upper }}</strong> and cannot be edited.
+                            </p>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Buttons -->
+                <div class="flex justify-end space-x-3 border-t pt-6">
+                    <a href="{% url 'load_detail' load.load_id %}" class="btn-secondary">Cancel</a>
+                    <button type="submit" class="btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Show first relevant section by default
+        document.addEventListener('DOMContentLoaded', function() {
+            const checkInRadio = document.querySelector('input[value="check_in"]');
+            const completeRadio = document.querySelector('input[value="complete"]');
+
+            if (checkInRadio) {
+                checkInRadio.checked = true;
+                document.getElementById('check-in-section').style.display = 'block';
+            } else if (completeRadio) {
+                completeRadio.checked = true;
+                document.getElementById('complete-section').style.display = 'block';
+            }
+        });
+    </script>
+
+{% endblock %}

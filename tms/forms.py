@@ -44,8 +44,6 @@ class LoadForm(forms.ModelForm):
             # financials
             "rate",
             "miles",
-            "commission_type",
-            "dispatcher_commission",
             # carrier
             "carrier",
             "driver",
@@ -159,8 +157,6 @@ class LoadForm(forms.ModelForm):
                 "carrier",
                 "driver",
                 "truck",
-                "dispatcher_commission",
-                "commission_type",
             ]
             for f in lock_fields:
                 if f in self.fields:
@@ -172,14 +168,13 @@ class LoadForm(forms.ModelForm):
         if self.user and getattr(self.user, "role", None) == "tracking_agent":
             disabled_classes = "bg-gray-100 cursor-not-allowed text-gray-600"
             tracker_lock = [
+                "load_id",
                 "broker",
                 "rate",
                 "miles",
                 "carrier",
                 "driver",
                 "truck",
-                "commission_type",
-                "dispatcher_commission",
             ]
             for f in tracker_lock:
                 if f in self.fields:
@@ -255,199 +250,210 @@ class DocumentUploadForm(forms.ModelForm):
         }
 
 
-# class TrackingUpdateForm(forms.ModelForm):
-#     """
-#     Form for creating tracking updates.
+class TrackingUpdateForm(forms.ModelForm):
+    """
+    Form for creating tracking updates.
 
-#     Excludes relational fields (`load`, `tracking_agent`) which are set in views.
-#     """
+    Excludes relational fields (`load`, `tracking_agent`) which are set in views.
+    """
 
-#     class Meta:
-#         model = TrackingUpdate
-#         fields = [
-#             "current_location",
-#             "tracking_method",
-#             "is_delayed",
-#             "delay_reason",
-#             "new_eta",
-#             "notes",
-#         ]
-#         widgets = {
-#             "current_location": forms.TextInput(
-#                 attrs={"placeholder": "e.g., I-80 exit 42, IA"}
-#             ),
-#             "tracking_method": forms.Select(),
-#             "is_delayed": forms.CheckboxInput(),
-#             "delay_reason": forms.Select(),
-#             "new_eta": forms.DateTimeInput(
-#                 attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
-#             ),
-#             "notes": forms.Textarea(
-#                 attrs={"rows": 3, "placeholder": "Add brief notes..."}
-#             ),
-#         }
+    class Meta:
+        model = TrackingUpdate
+        fields = [
+            "current_location",
+            "tracking_method",
+            "is_delayed",
+            "delay_reason",
+            "new_eta",
+            "notes",
+        ]
+        widgets = {
+            "current_location": forms.TextInput(
+                attrs={"placeholder": "e.g., I-80 exit 42, IA"}
+            ),
+            "tracking_method": forms.Select(),
+            "is_delayed": forms.CheckboxInput(),
+            "delay_reason": forms.Select(),
+            "new_eta": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
+            ),
+            "notes": forms.Textarea(
+                attrs={"rows": 3, "placeholder": "Add brief notes..."}
+            ),
+        }
 
 
-# class RescheduleRequestForm(forms.ModelForm):
-#     """
-#     Form for requesting and recording delivery reschedules.
+class RescheduleRequestForm(forms.ModelForm):
+    """
+    Form for requesting and recording stop appointment reschedules.
 
-#     Excludes relational fields (`load`, `created_by`) which are set in views.
-#     """
+    Excludes relational fields (`load`, `created_by`, `stop`) which are set in views.
+    Shows original appointment window from selected stop as read-only display.
+    User proposes new requested appointment window.
+    """
 
-#     class Meta:
-#         model = RescheduleRequest
-#         fields = [
-#             "original_appointment",
-#             "new_appointment",
-#             "reason",
-#             "consignee_approved",
-#             "broker_approved",
-#             "manager_approved",
-#             "remarks",
-#         ]
-#         widgets = {
-#             "original_appointment": forms.DateTimeInput(
-#                 attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
-#             ),
-#             "new_appointment": forms.DateTimeInput(
-#                 attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
-#             ),
-#             "reason": forms.Select(),
-#             "consignee_approved": forms.CheckboxInput(),
-#             "broker_approved": forms.CheckboxInput(),
-#             "manager_approved": forms.CheckboxInput(),
-#             "remarks": forms.Textarea(
-#                 attrs={"rows": 3, "placeholder": "Contacts, confirmation #, notes..."}
-#             ),
-#         }
+    class Meta:
+        model = RescheduleRequest
+        fields = [
+            "stop",
+            "reason",
+            "requested_appt_start",
+            "requested_appt_end",
+            "remarks",
+            "consignee_approved",
+            "broker_approved",
+            "manager_approved",
+        ]
+        widgets = {
+            "stop": forms.Select(),
+            "reason": forms.Select(),
+            "requested_appt_start": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
+            ),
+            "requested_appt_end": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
+            ),
+            "consignee_approved": forms.CheckboxInput(),
+            "broker_approved": forms.CheckboxInput(),
+            "manager_approved": forms.CheckboxInput(),
+            "remarks": forms.Textarea(
+                attrs={"rows": 3, "placeholder": "Contacts, confirmation #, notes..."}
+            ),
+        }
 
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         # Critical: otherwise mypy/pylance + Django sometimes parse wrongly
-#         self.fields["original_appointment"].input_formats = [_DT_LOCAL_FMT]
-#         self.fields["new_appointment"].input_formats = [_DT_LOCAL_FMT]
+    def __init__(self, load, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Filter stops to only those from this load
+        self.fields["stop"].queryset = load.stops.all()
+        self.fields["stop"].label = "Select Stop to Reschedule"
+
+        # Set input formats for datetime fields
+        self.fields["requested_appt_start"].input_formats = [_DT_LOCAL_FMT]
+        self.fields["requested_appt_end"].input_formats = [_DT_LOCAL_FMT]
+
 
 # ============================================================================
 # ACCESSORIAL FORMS
 # ============================================================================
 
 
-# class AccessorialForm(forms.ModelForm):
-#     class Meta:
-#         model = Accessorial
-#         fields = [
-#             "charge_type",
-#             "amount",
-#             "description",
-#             # Detention fields
-#             "detention_start",
-#             "detention_end",
-#             "detention_billed_hours",
-#             # Layover fields
-#             "layover_start_date",
-#             "layover_end_date",
-#             # Approvals
-#             "manager_approved",
-#             "broker_approved",
-#         ]
-#         widgets = {
-#             "charge_type": forms.Select(
-#                 attrs={"class": "w-full px-3 py-2 border border-gray-300 bg-white"}
-#             ),
-#             "amount": forms.NumberInput(
-#                 attrs={
-#                     "type": "number",
-#                     "step": "0.01",
-#                     "min": "0",
-#                     "placeholder": "Leave blank for manager to calculate",
-#                     "class": "w-full px-3 py-2 border border-gray-300",
-#                 }
-#             ),
-#             "description": forms.Textarea(
-#                 attrs={
-#                     "rows": 3,
-#                     "placeholder": "Details, reasons, notes...",
-#                     "class": "w-full px-3 py-2 border border-gray-300",
-#                 }
-#             ),
-#             # Detention
-#             "detention_start": forms.DateTimeInput(
-#                 attrs={
-#                     "type": "datetime-local",
-#                     "step": "60",
-#                     "class": "w-full px-3 py-2 border border-gray-300",
-#                 }, format="%Y-%m-%dT%H:%M"
-#             ),
-#             "detention_end": forms.DateTimeInput(
-#                 attrs={
-#                     "type": "datetime-local",
-#                     "step": "60",
-#                     "class": "w-full px-3 py-2 border border-gray-300",
-#                 }, format="%Y-%m-%dT%H:%M"
-#             ),
-#             "detention_billed_hours": forms.NumberInput(
-#                 attrs={
-#                     "type": "number",
-#                     "step": "0.25",
-#                     "min": "0",
-#                     "placeholder": "Billable hours",
-#                     "class": "w-full px-3 py-2 border border-gray-300",
-#                 }
-#             ),
-#             # Layover
-#             "layover_start_date": forms.DateInput(
-#                 attrs={
-#                     "type": "date",
-#                     "class": "w-full px-3 py-2 border border-gray-300",
-#                 }
-#             ),
-#             "layover_end_date": forms.DateInput(
-#                 attrs={
-#                     "type": "date",
-#                     "class": "w-full px-3 py-2 border border-gray-300",
-#                 }
-#             ),
-#             "manager_approved": forms.CheckboxInput(),
-#             "broker_approved": forms.CheckboxInput(),
-#         }
+class AccessorialForm(forms.ModelForm):
+    class Meta:
+        model = Accessorial
+        fields = [
+            "charge_type",
+            "amount",
+            "description",
+            # Detention fields
+            "detention_start",
+            "detention_end",
+            "detention_billed_hours",
+            # Layover fields
+            "layover_start_date",
+            "layover_end_date",
+            # Approvals
+            "manager_approved",
+            "broker_approved",
+        ]
+        widgets = {
+            "charge_type": forms.Select(
+                attrs={"class": "w-full px-3 py-2 border border-gray-300 bg-white"}
+            ),
+            "amount": forms.NumberInput(
+                attrs={
+                    "type": "number",
+                    "step": "0.01",
+                    "min": "0",
+                    "placeholder": "Leave blank for manager to calculate",
+                    "class": "w-full px-3 py-2 border border-gray-300",
+                }
+            ),
+            "description": forms.Textarea(
+                attrs={
+                    "rows": 3,
+                    "placeholder": "Details, reasons, notes...",
+                    "class": "w-full px-3 py-2 border border-gray-300",
+                }
+            ),
+            # Detention
+            "detention_start": forms.DateTimeInput(
+                attrs={
+                    "type": "datetime-local",
+                    "step": "60",
+                    "class": "w-full px-3 py-2 border border-gray-300",
+                },
+                format="%Y-%m-%dT%H:%M",
+            ),
+            "detention_end": forms.DateTimeInput(
+                attrs={
+                    "type": "datetime-local",
+                    "step": "60",
+                    "class": "w-full px-3 py-2 border border-gray-300",
+                },
+                format="%Y-%m-%dT%H:%M",
+            ),
+            "detention_billed_hours": forms.NumberInput(
+                attrs={
+                    "type": "number",
+                    "step": "0.25",
+                    "min": "0",
+                    "placeholder": "Billable hours",
+                    "class": "w-full px-3 py-2 border border-gray-300",
+                }
+            ),
+            # Layover
+            "layover_start_date": forms.DateInput(
+                attrs={
+                    "type": "date",
+                    "class": "w-full px-3 py-2 border border-gray-300",
+                }
+            ),
+            "layover_end_date": forms.DateInput(
+                attrs={
+                    "type": "date",
+                    "class": "w-full px-3 py-2 border border-gray-300",
+                }
+            ),
+            "manager_approved": forms.CheckboxInput(),
+            "broker_approved": forms.CheckboxInput(),
+        }
 
-#     def clean(self):
-#         """Custom validation based on charge_type."""
-#         cleaned_data = super().clean()
-#         charge_type = cleaned_data.get("charge_type")
+    def clean(self):
+        """Custom validation based on charge_type."""
+        cleaned_data = super().clean()
+        charge_type = cleaned_data.get("charge_type")
 
-#         if charge_type == Accessorial.ChargeType.DETENTION:
-#             detention_start = cleaned_data.get("detention_start")
-#             detention_end = cleaned_data.get("detention_end")
-#             billed_hours = cleaned_data.get("detention_billed_hours")
+        if charge_type == Accessorial.ChargeType.DETENTION:
+            detention_start = cleaned_data.get("detention_start")
+            detention_end = cleaned_data.get("detention_end")
+            billed_hours = cleaned_data.get("detention_billed_hours")
 
-#             if not detention_start or not detention_end:
-#                 raise forms.ValidationError(
-#                     "Detention start and end times are required for Detention charges."
-#                 )
-#             if detention_end <= detention_start:
-#                 raise forms.ValidationError(
-#                     "Detention end time must be after start time."
-#                 )
-#             if billed_hours is None or billed_hours <= 0:
-#                 raise forms.ValidationError(
-#                     "Billed hours must be a positive number for Detention charges."
-#                 )
+            if not detention_start or not detention_end:
+                raise forms.ValidationError(
+                    "Detention start and end times are required for Detention charges."
+                )
+            if detention_end <= detention_start:
+                raise forms.ValidationError(
+                    "Detention end time must be after start time."
+                )
+            if billed_hours is None or billed_hours <= 0:
+                raise forms.ValidationError(
+                    "Billed hours must be a positive number for Detention charges."
+                )
 
-#         elif charge_type == Accessorial.ChargeType.LAYOVER:
-#             layover_start = cleaned_data.get("layover_start_date")
-#             layover_end = cleaned_data.get("layover_end_date")
+        elif charge_type == Accessorial.ChargeType.LAYOVER:
+            layover_start = cleaned_data.get("layover_start_date")
+            layover_end = cleaned_data.get("layover_end_date")
 
-#             if not layover_start or not layover_end:
-#                 raise forms.ValidationError(
-#                     "Layover start and end dates are required for Layover charges."
-#                 )
-#             if layover_end < layover_start:
-#                 raise forms.ValidationError(
-#                     "Layover end date must be on or after start date."
-#                 )
-#         return cleaned_data
+            if not layover_start or not layover_end:
+                raise forms.ValidationError(
+                    "Layover start and end dates are required for Layover charges."
+                )
+            if layover_end < layover_start:
+                raise forms.ValidationError(
+                    "Layover end date must be on or after start date."
+                )
+        return cleaned_data
 
 
 # ============================================================================
@@ -455,23 +461,23 @@ class DocumentUploadForm(forms.ModelForm):
 # ============================================================================
 
 
-# class DutyLogForm(forms.ModelForm):
-#     class Meta:
-#         model = DutyLog
-#         fields = [
-#             "status",
-#             "start_time",
-#             "current_location",
-#             "remarks",
-#         ]
-#         widgets = {
-#             "start_time": forms.DateTimeInput(
-#                 attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
-#             ),
-#             "current_location": forms.TextInput(
-#                 attrs={"placeholder": "e.g., I-80 exit 42, IA"}
-#             ),
-#             "remarks": forms.Textarea(
-#                 attrs={"rows": 3, "placeholder": "Add brief notes..."}
-#             ),
-#         }
+class DutyLogForm(forms.ModelForm):
+    class Meta:
+        model = DutyLog
+        fields = [
+            "status",
+            "start_time",
+            "current_location",
+            "remarks",
+        ]
+        widgets = {
+            "start_time": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
+            ),
+            "current_location": forms.TextInput(
+                attrs={"placeholder": "e.g., I-80 exit 42, IA"}
+            ),
+            "remarks": forms.Textarea(
+                attrs={"rows": 3, "placeholder": "Add brief notes..."}
+            ),
+        }

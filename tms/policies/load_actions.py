@@ -2,19 +2,20 @@ from tms.models import Load
 from tms.policies.roles import is_dispatcher, is_tracking_agent
 
 
-def actions_for(user, load: Load) -> list[str]:
+def get_available_actions(user, load: Load) -> list[str]:
     actions: list[str] = []
 
     if is_dispatcher(user):
         if load.status == Load.Status.BOOKED and load.can_handover():
             actions.append("handover_to_tracking")
-        if load.status not in [
+        if load.status in [
             Load.Status.COMPLETED,
             Load.Status.DELIVERED,
             Load.Status.CANCELLED,
         ]:
-            actions.append("cancel_load")
             actions.append("create_reschedule_request")
+        if load.status in [Load.Status.BOOKED, Load.Status.DISPATCHED]:
+            actions.append("cancel_load")
         if load.status not in [Load.Status.COMPLETED, Load.Status.CANCELLED]:
             actions.append("add_accessorial")
 

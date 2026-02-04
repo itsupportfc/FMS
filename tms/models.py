@@ -91,6 +91,10 @@ class Carrier(BaseModel):
         COMPANY = "company", "Trucking Company"
         OWNER_OPERATOR = "owner_operator", "Owner-Operator"
 
+    class CommissionType(models.TextChoices):
+        PERCENTAGE = "percentage", "Percentage of Rate"
+        FIXED = "fixed", "Fixed Amount (per load)"
+
     # Identification
     name = models.CharField(max_length=200)
     mc_number = models.CharField(
@@ -122,6 +126,23 @@ class Carrier(BaseModel):
     # Audit - who created this carrier
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="carriers_created"
+    )
+
+    # Commission configuration (admin-only in UI)
+    commission_type = models.CharField(
+        max_length=20,
+        choices=CommissionType.choices,
+        default=CommissionType.PERCENTAGE,
+        blank=True,
+        null=True,
+        help_text="Carrier pay type (percentage or fixed per load).",
+    )
+    commission_value = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="If percentage: enter 0-100. If fixed: amount per load in USD.",
     )
 
     def __str__(self):
@@ -331,7 +352,7 @@ class LoadDocument(BaseModel):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.load.load_id} - {self.document_type.label} ({self.original_filename})"
+        return f"{self.load.load_id} - {self.document_type} ({self.original_filename})"
 
 
 class Accessorial(BaseModel):
@@ -537,6 +558,16 @@ class LoadStop(BaseModel):
             return self.departed_at - self.arrived_at
         return None
 
+    def check_in(self, arrival_time=None):
+        """
+        V1 convenience. Mark stop as checked in with arrival time.
+        """
+        if arrival_time:
+            self.arrived_at = arrival_time
+        else:
+            self.arrived_at = timezone.now()
+        self.save(update_fields=["arrived_at", "updated_at"])
+
     def mark_completed(self, departure_time=None):
         """
         V1 convenience. No state machine needed.
@@ -575,10 +606,6 @@ class Load(BaseModel):
         DELIVERED = "delivered", "Delivered"
         COMPLETED = "completed", "Completed"
         CANCELLED = "cancelled", "Cancelled"
-
-    class PaymentMethod(models.TextChoices):
-        PERCENTAGE = "percentage", "Percentage of Rate"
-        FIXED = "fixed", "Fixed Amount"
 
     # Broker Load Reference
     load_id = models.CharField(
@@ -639,23 +666,6 @@ class Load(BaseModel):
         editable=False,
         null=True,
         help_text="Rate Per Mile (auto-calculated)",
-    )
-
-    # Payment from Carrier
-    commission_type = models.CharField(
-        max_length=20,
-        choices=PaymentMethod.choices,
-        default=PaymentMethod.PERCENTAGE,
-        help_text="How you receive payment from carrier",
-        blank=True,
-        null=True,
-    )
-    dispatcher_commission = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        help_text="Percentage (e.g., 85.00 for 85%) or fixed amount in USD",
     )
 
     # Status

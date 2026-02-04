@@ -1,0 +1,7 @@
+{% for broker in brokers %}
+    <div class="broker-option"
+         data-id="{{ broker.id }}"
+         data-name="{{ broker.name }}">{{ broker.name }}</div>
+{% empty %}
+    <div class="text-gray-500 text-sm p-2">No brokers found.</div>
+{% endfor %}

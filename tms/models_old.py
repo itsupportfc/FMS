@@ -1253,13 +1253,13 @@ class Load(BaseModel):
         )
 
         # Auto-create TONU accessorial charge (initially pending via boolean approvals)
-        tonu = Accessorial.objects.create(
-            load=self,
-            charge_type=Accessorial.ChargeType.TONU,
-            amount=0.00,  # will be set during approval
-            description=f"TONU charge - Load cancelled at {self.Status(self.status).label}",
-            created_by=self.dispatcher,
-        )
+        # tonu = Accessorial.objects.create(
+        #     load=self,
+        #     charge_type=Accessorial.ChargeType.TONU,
+        #     amount=0.00,  # will be set during approval
+        #     description=f"TONU charge - Load cancelled at {self.Status(self.status).label}",
+        #     created_by=self.dispatcher,
+        # )
         # Free up truck status
         if self.truck:
             self.truck.current_status = Truck.TruckStatus.AVAILABLE

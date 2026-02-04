@@ -1,61 +1,100 @@
 {% extends "base.html" %}
 
+{% load form_filters %}
+
 {% block content %}
+    {# PAGE HEADER #}
     <div class="page-header">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between gap-6">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900">Create Load</h1>
-                <p class="text-sm text-gray-600 mt-1">Book a load and define the route stops.</p>
+                <h1 class="text-3xl font-bold text-gray-900">Create Load</h1>
+                <p class="text-sm text-gray-600 mt-2">Book a new freight load and define the route stops.</p>
             </div>
-            <div>
-                <button type="submit" form="create-load-form" class="btn-primary">Create Load</button>
-            </div>
+            <button type="submit" form="create-load-form" class="btn-primary">Create Load</button>
         </div>
     </div>
 
-    <div class="max-w-5xl mx-auto px-8 py-8">
-        <form id="create-load-form" method="post" class="space-y-8">
+    {# MAIN CONTENT AREA #}
+    <div class="max-w-6xl mx-auto px-8 py-6">
+        {# FLASH MESSAGES #}
+        {% if messages %}
+            <div class="mb-6 space-y-3">
+                {% for message in messages %}
+                    <div class="{% if message.tags == 'error' %}
+                                    alert-error
+                                {% elif message.tags == 'success' %}
+                                    alert-success
+                                {% elif message.tags == 'warning' %}
+                                    alert-warning
+                                {% else %}
+                                    alert-info
+                                {% endif %}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {# FORM #}
+        <form id="create-load-form" method="post" class="space-y-6">
             {% csrf_token %}
 
-            {% if form.non_field_errors %}<div class="alert-error">{{ form.non_field_errors }}</div>{% endif %}
+            {# FORM-LEVEL ERRORS #}
+            {% if form.non_field_errors %}
+                <div class="rounded-lg bg-red-50 border border-red-200 px-6 py-4 text-[15px] text-red-700">
+                    {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+                </div>
+            {% endif %}
 
-            <!-- Load -->
-            <div class="card">
-                <div class="section-title">Load</div>
+            {# ============================================================ #}
+            {# BOOKING INFORMATION SECTION #}
+            {# ============================================================ #}
+            <div class="section">
+                <h2 class="section-title">Booking Information</h2>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="grid grid-cols-2 gap-6">
                     <div>
-                        <label class="form-label" for="{{ form.load_id.id_for_label }}">Load ID</label>
-                        {{ form.load_id }}
-                        {% for e in form.load_id.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+                        <label class="form-label">Load ID</label>
+                        {{ form.load_id|add_class:"form-input" }}
+                        {% if form.load_id.errors %}<p class="form-error">{{ form.load_id.errors.0 }}</p>{% endif %}
                     </div>
-
+                    {% comment %} <div>
+                        <label class="form-label">Broker</label>
+                        {{ form.broker|add_class:"form-select" }}
+                        {% if form.broker.errors %}<p class="form-error">{{ form.broker.errors.0 }}</p>{% endif %}
+                    </div> {% endcomment %}
                     <div>
-                        <label class="form-label" for="{{ form.broker.id_for_label }}">Broker</label>
-                        {{ form.broker }}
-                        {% for e in form.broker.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
-                    </div>
+                        <label for="broker_search" class="form-label">Broker</label>
 
-                    <div>
-                        <label class="form-label" for="{{ form.carrier.id_for_label }}">Carrier</label>
-                        {{ form.carrier }}
-                        {% for e in form.carrier.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
-                    </div>
+                        <!-- Visible search input -->
+                        <input type="text"
+                               id="broker_search"
+                               name="q"
+                               placeholder="Search broker by name..."
+                               class="form-input"
+                               hx-get="{% url 'search_brokers' %}"
+                               hx-trigger="keyup changed delay:300ms"
+                               hx-target="#broker_results"
+                               autocomplete="off" />
 
-                    <!-- ✅ FIX: HTMX target exists -->
-                    <div id="carrier-assets"
-                         class="grid grid-cols-1 md:grid-cols-2 gap-6 md:col-span-2">
-                        {% include "tms/partials/carrier_assets.html" %}
+                        <!-- Hidden field to hold the broker ID -->
+                        <input type="hidden" id="broker_hidden" name="broker" value="">
+
+                        <!-- Result dropdown -->
+                        <div id="broker_results"
+                             class="hidden mt-2 border border-gray-300 rounded bg-white shadow-lg max-h-48 overflow-y-auto">
+                        </div>
+
+                        {% if form.broker.errors %}<p class="form-error">{{ form.broker.errors.0 }}</p>{% endif %}
 
                     </div>
                 </div>
             </div>
 
-            <!-- Stops -->
-            <div class="card">
-                <div class="flex items-center justify-between">
-                    <div class="section-title mb-0">Stops</div>
-
+            {# ============================================================ #}
+            {# ROUTE INFORMATION (STOPS) SECTION #}
+            {# ============================================================ #}
+            <div class="section">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="section-title mb-0">Route Information</h2>
                     <button type="button"
                             class="btn-secondary btn-sm"
                             hx-get="{% url 'load_stop_row' %}"
@@ -66,60 +105,104 @@
                     </button>
                 </div>
 
-                <div class="mt-6">
-                    {{ stop_formset.management_form }}
+                <p class="text-sm text-gray-600 mb-6">
+                    Define at least 2 stops (pickup and delivery) for the route. You can add more stops as needed.
+                </p>
 
-                    {% if stop_formset.non_form_errors %}<div class="alert-error mb-4">{{ stop_formset.non_form_errors }}</div>{% endif %}
+                {{ stop_formset.management_form }}
 
-                    <div id="stops-container" class="space-y-4">
-                        {% for stop_form in stop_formset %}
-                            {% include "tms/partials/_stop_row.html" with stop_form=stop_form index=forloop.counter0 next_total=stop_formset.total_form_count %}
+                {% if stop_formset.non_form_errors %}
+                    <div class="rounded-lg bg-red-50 border border-red-200 px-6 py-4 text-[15px] text-red-700 mb-6">
+                        {% for error in stop_formset.non_form_errors %}<p>{{ error }}</p>{% endfor %}
+                    </div>
+                {% endif %}
 
-                        {% endfor %}
+                <div id="stops-container" class="space-y-6">
+                    {% for stop_form in stop_formset %}
+                        {% include "tms/partials/_stop_row.html" with stop_form=stop_form index=forloop.counter0 next_total=stop_formset.total_form_count %}
+
+                    {% endfor %}
+                </div>
+            </div>
+
+            {# ============================================================ #}
+            {# CARRIER ASSIGNMENT SECTION #}
+            {# ============================================================ #}
+            <div class="section">
+                <h2 class="section-title">Carrier Assignment</h2>
+
+                <div class="grid grid-cols-3 gap-6">
+                    <div>
+                        <label class="form-label">Carrier</label>
+                        {{ form.carrier|add_class:"form-select" }}
+                        {% if form.carrier.errors %}<p class="form-error">{{ form.carrier.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div id="carrier-assets" class="col-span-2 grid grid-cols-2 gap-6">
+                        {% include "tms/partials/carrier_assets.html" %}
+
                     </div>
                 </div>
             </div>
 
-            <!-- Financial -->
-            <div class="card">
-                <div class="section-title">Financial</div>
+            {# ============================================================ #}
+            {# FINANCIAL INFORMATION SECTION #}
+            {# ============================================================ #}
+            <div class="section">
+                <h2 class="section-title">Financial Information</h2>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="grid grid-cols-3 gap-6">
                     <div>
-                        <label class="form-label" for="{{ form.rate.id_for_label }}">Rate</label>
-                        {{ form.rate }}
-                        {% for e in form.rate.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+                        <label class="form-label">Miles</label>
+                        {{ form.miles|add_class:"form-input" }}
+                        {% if form.miles.errors %}<p class="form-error">{{ form.miles.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="form-label" for="{{ form.miles.id_for_label }}">Miles</label>
-                        {{ form.miles }}
-                        {% for e in form.miles.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
+                        <label class="form-label">Rate ($)</label>
+                        {{ form.rate|add_class:"form-input" }}
+                        {% if form.rate.errors %}<p class="form-error">{{ form.rate.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="form-label">Rate / Mile</label>
-                        <div class="form-input bg-gray-50">
+                        <label class="form-label">Rate Per Mile</label>
+                        <div class="form-input bg-gray-50 text-gray-700 cursor-not-allowed">
                             <span id="rate-per-mile">—</span>
                         </div>
                     </div>
                 </div>
+
+                
             </div>
 
-            <!-- Remarks -->
-            <div class="card">
-                <div class="section-title">Notes</div>
-                <label class="form-label" for="{{ form.remarks.id_for_label }}">Remarks</label>
-                {{ form.remarks }}
-                {% for e in form.remarks.errors %}<div class="form-error">{{ e }}</div>{% endfor %}
-            </div>
+            {# ============================================================ #}
+            {# COMMODITY & NOTES SECTION #}
+            {# ============================================================ #}
+            <div class="section">
+                <h2 class="section-title">Additional Information</h2>
 
-            <div class="flex justify-end">
-                <button type="submit" class="btn-primary">Create Load</button>
+                <div class="grid grid-cols-2 gap-6">
+                    <div>
+                        <label class="form-label">Commodity Type</label>
+                        {{ form.commodity_type|add_class:"form-input" }}
+                        {% if form.commodity_type.errors %}<p class="form-error">{{ form.commodity_type.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label class="form-label">Weight (lbs)</label>
+                        {{ form.weight|add_class:"form-input" }}
+                        {% if form.weight.errors %}<p class="form-error">{{ form.weight.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
+
+                <div class="mt-6">
+                    <label class="form-label">Remarks</label>
+                    {{ form.remarks|add_class:"form-textarea" }}
+                    {% if form.remarks.errors %}<p class="form-error">{{ form.remarks.errors.0 }}</p>{% endif %}
+                    <p class="helper-text">Any special instructions or notes for dispatch/tracking.</p>
+                </div>
             </div>
         </form>
     </div>
 
     <script>
-        // RPM calc (optional but useful)
+        // RPM calc
         (function() {
             const rateInput = document.getElementById("id_rate");
             const milesInput = document.getElementById("id_miles");
@@ -134,42 +217,6 @@
             milesInput?.addEventListener("input", calc);
             calc();
         })();
-
-        // Appointment toggle (only JS you need)
-        function syncApptFields(row) {
-            const sel = row.querySelector('select[name$="-appointment_type"]');
-            const wrap = row.querySelector('[data-appt-fields]');
-            if (!sel || !wrap) return;
-
-            const isAppt = sel.value === "appt";
-            wrap.hidden = !isAppt;
-
-            if (!isAppt) {
-                row.querySelector('[data-appt-start]')?.setAttribute("value", "");
-                row.querySelector('[data-appt-end]')?.setAttribute("value", "");
-                const s = row.querySelector('[data-appt-start]');
-                const e = row.querySelector('[data-appt-end]');
-                if (s) s.value = "";
-                if (e) e.value = "";
-            }
-        }
-
-        document.addEventListener('change', function(e) {
-            const sel = e.target.closest('[data-appt-type]');
-            if (!sel) return;
-            const row = sel.closest('[data-stop-row]');
-            if (!row) return;
-            syncApptFields(row);
-        });
-
-        document.querySelectorAll('[data-stop-row]').forEach(syncApptFields);
-
-        document.body.addEventListener('htmx:afterSwap', function(evt) {
-            // when a new stop is appended into stops-container
-            if (evt.target && evt.target.id === "stops-container") {
-                evt.target.querySelectorAll('[data-stop-row]').forEach(syncApptFields);
-            }
-        });
     </script>
 
 {% endblock %}

@@ -1,4 +1,4 @@
-{% comment %} {% extends "base.html" %}
+{% extends "base.html" %}
 
 {% load form_filters %}
 
@@ -15,30 +15,73 @@
 
     <div class="max-w-4xl mx-auto px-8 py-8">
         <form method="post"
-              action="{% url 'create_reschedule_request' load.load_id %}"
+              action="{% if edit_mode %}{% url 'edit_reschedule_approvals' load.load_id request_id %}{% else %}{% url 'create_reschedule_request' load.load_id %}{% endif %}"
               id="reschedule-form"
               class="card space-y-5">
             {% csrf_token %}
 
+            <div>
+                <label class="form-label">Select Stop to Reschedule</label>
+                <select name="stop" id="id_stop" class="form-select">
+                    <option value="">---------</option>
+                    {% for stop in load.stops.all %}
+                        <option value="{{ stop.id }}"
+                                {% if stop.appt_start %}data-appt-start="{{ stop.appt_start|date:'Y-m-d\TH:i' }}"{% endif %}
+                                {% if stop.appt_end %}data-appt-end="{{ stop.appt_end|date:'H:i' }}"{% endif %}
+                                {% if form.stop.value == stop.id %}selected{% endif %}>
+                            {{ stop.sequence }}. {{ stop.location.name }} ({{ stop.stop_type }})
+                        </option>
+                    {% endfor %}
+                </select>
+                {% if form.stop.errors %}<p class="text-sm text-red-600 mt-1">{{ form.stop.errors.0 }}</p>{% endif %}
+            </div>
+
             <div class="grid grid-cols-2 gap-5">
                 <div>
-                    <label class="form-label">Original Appointment</label>
-                    {{ form.original_appointment|add_class:"form-input" }}
+                    <label class="form-label">Original Appt Start</label>
+                    <input type="datetime-local"
+                           id="original-appt-start"
+                           class="form-input bg-gray-50"
+                           disabled />
+                    <p class="text-xs text-gray-500 mt-1" id="appt-start-helper">Current appointment from selected stop</p>
                 </div>
                 <div>
-                    <label class="form-label">New Appointment</label>
-                    {{ form.new_appointment|add_class:"form-input" }}
+                    <label class="form-label">Original Appt End</label>
+                    <input type="datetime-local"
+                           id="original-appt-end"
+                           class="form-input bg-gray-50"
+                           disabled />
+                    <p class="text-xs text-gray-500 mt-1" id="appt-end-helper">Current appointment from selected stop</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-5">
+                <div>
+                    <label class="form-label">Requested Appt Start</label>
+                    {{ form.requested_appt_start|add_class:"form-input" }}
+                    {% if form.requested_appt_start.errors %}
+                        <p class="text-sm text-red-600 mt-1">{{ form.requested_appt_start.errors.0 }}</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <label class="form-label">Requested Appt End</label>
+                    {{ form.requested_appt_end|add_class:"form-input" }}
+                    {% if form.requested_appt_end.errors %}
+                        <p class="text-sm text-red-600 mt-1">{{ form.requested_appt_end.errors.0 }}</p>
+                    {% endif %}
                 </div>
             </div>
 
             <div>
                 <label class="form-label">Reason</label>
                 {{ form.reason|add_class:"form-select" }}
+                {% if form.reason.errors %}<p class="text-sm text-red-600 mt-1">{{ form.reason.errors.0 }}</p>{% endif %}
             </div>
 
             <div>
                 <label class="form-label">Remarks</label>
                 {{ form.remarks|add_class:"form-textarea" }}
+                {% if form.remarks.errors %}<p class="text-sm text-red-600 mt-1">{{ form.remarks.errors.0 }}</p>{% endif %}
             </div>
 
             <div>
@@ -65,4 +108,61 @@
         </div>
     </div>
 
-{% endblock %} {% endcomment %}
+    <script>
+        // Auto-fill original appointment times when stop is selected
+        document.addEventListener('DOMContentLoaded', function() {
+            const stopSelect = document.getElementById('id_stop');
+            const originalStart = document.getElementById('original-appt-start');
+            const originalEnd = document.getElementById('original-appt-end');
+            const startHelper = document.getElementById('appt-start-helper');
+            const endHelper = document.getElementById('appt-end-helper');
+
+            function updateOriginalAppointment() {
+                const selectedOption = stopSelect.options[stopSelect.selectedIndex];
+
+                if (selectedOption.value) {
+                    const apptStart = selectedOption.dataset.apptStart;
+                    const apptEnd = selectedOption.dataset.apptEnd;
+
+                    // Check if appointment exists and is not empty/None
+                    if (apptStart && apptStart !== '' && apptStart !== 'None') {
+                        originalStart.value = apptStart;
+                        startHelper.textContent = 'Current appointment from selected stop';
+                        startHelper.className = 'text-xs text-gray-500 mt-1';
+                    } else {
+                        originalStart.value = '';
+                        startHelper.textContent = 'No appointment scheduled (FCFS or flexible delivery)';
+                        startHelper.className = 'text-xs text-amber-600 mt-1';
+                    }
+
+                    if (apptEnd && apptEnd !== '' && apptEnd !== 'None') {
+                        // For end time, combine with the start date
+                        if (apptStart && apptStart !== '' && apptStart !== 'None' && apptEnd.includes(':')) {
+                            const dateOnly = apptStart.split('T')[0];
+                            originalEnd.value = dateOnly + 'T' + apptEnd;
+                        }
+                        endHelper.textContent = 'Current appointment from selected stop';
+                        endHelper.className = 'text-xs text-gray-500 mt-1';
+                    } else {
+                        originalEnd.value = '';
+                        endHelper.textContent = 'No appointment scheduled (FCFS or flexible delivery)';
+                        endHelper.className = 'text-xs text-amber-600 mt-1';
+                    }
+                } else {
+                    originalStart.value = '';
+                    originalEnd.value = '';
+                    startHelper.textContent = 'Select a stop to see current appointment';
+                    endHelper.textContent = 'Select a stop to see current appointment';
+                    startHelper.className = 'text-xs text-gray-500 mt-1';
+                    endHelper.className = 'text-xs text-gray-500 mt-1';
+                }
+            }
+
+            stopSelect.addEventListener('change', updateOriginalAppointment);
+
+            // Trigger on page load if a stop is already selected
+            updateOriginalAppointment();
+        });
+    </script>
+
+{% endblock %}

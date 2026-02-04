@@ -1,0 +1,57 @@
+<!-- Individual Stop Card Item with Action Buttons -->
+<li class="info-item" id="stop-{{ s.id }}">
+    <div class="flex items-center justify-between">
+        <div>
+            <p class="font-semibold text-[15px] text-gray-900">Stop {{ s.sequence }} — {{ s.get_stop_type_display }}</p>
+            <p class="text-[13px] text-gray-600">{{ s.facility.name }} ({{ s.facility.city }}, {{ s.facility.state }})</p>
+        </div>
+
+        {% if s.status == "completed" %}
+            <span class="badge-green">COMPLETED</span>
+        {% elif s.status == "skipped" %}
+            <span class="badge-gray">SKIPPED</span>
+        {% else %}
+            <span class="badge-amber">PENDING</span>
+        {% endif %}
+    </div>
+
+    <div class="mt-2 text-[13px] text-gray-600 space-y-1">
+        <p>
+            <strong>Appt:</strong>
+            {% if s.appointment_type == "fcfs" %}
+                FCFS
+            {% else %}
+                {% if s.appt_start %}{{ s.appt_start|date:"M d, Y H:i" }}{% endif %}
+                {% if s.appt_end %}→ {{ s.appt_end|date:"M d, Y H:i" }}{% endif %}
+                {% if not s.appt_start and not s.appt_end %}—{% endif %}
+            {% endif %}
+        </p>
+
+        {% if s.arrived_at %}
+            <p>
+                <strong>Arrived:</strong> {{ s.arrived_at|date:"M d, Y H:i" }}
+            </p>
+        {% endif %}
+
+        {% if s.departed_at %}
+            <p>
+                <strong>Departed:</strong> {{ s.departed_at|date:"M d, Y H:i" }}
+            </p>
+        {% endif %}
+
+        {% if s.weight %}
+            <p>
+                <strong>Weight:</strong> {{ s.weight }}
+            </p>
+        {% endif %}
+    </div>
+
+    {% if s.notes %}<p class="helper-text mt-2">{{ s.notes }}</p>{% endif %}
+
+    {# Action Button (V1 - only for tracking agents on active loads) #}
+    {% if user.role == "tracking_agent" and load.status in "dispatched,in_transit" and s.status == "pending" %}
+        <div class="mt-3">
+            <a href="{% url 'stop_edit' s.id %}" class="btn-sm btn-primary">Edit Stop</a>
+        </div>
+    {% endif %}
+</li>
