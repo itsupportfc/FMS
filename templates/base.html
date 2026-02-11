@@ -16,7 +16,8 @@
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
               rel="stylesheet">
         {#Tailwind CDN#}
-        <script src="https://cdn.tailwindcss.com"></script>
+        {% comment %} <script src="https://cdn.tailwindcss.com"></script> {% endcomment %}
+        <link rel="stylesheet" href="{% static 'css/output.css' %}">
         <script defer src="{% static 'js/search-fields.js' %}"></script>
         {# Consolidated Tailwind Config #}
         <script>

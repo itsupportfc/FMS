@@ -1,0 +1,16 @@
+{
+    "name": "fms",
+    "version": "1.0.0",
+    "description": "Freight Management System",
+    "scripts": {
+        "build:css": "npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/output.css --minify",
+        "watch:css": "npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/output.css --watch"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "@tailwindcss/cli": "^4.1.17",
+        "tailwindcss": "^4.1.17"
+    }
+}

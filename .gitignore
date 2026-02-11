@@ -31,3 +31,7 @@ staticfiles/
 
 # env files
 .env
+
+node_modules/
+
+static_src/
