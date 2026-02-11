@@ -51,7 +51,7 @@ from .views import (
 )
 
 urlpatterns = [
-    path("dashboard/", dashboard, name="dashboard"),
+    path("", dashboard, name="dashboard"),
     # Specific load routes BEFORE the catch-all <str:load_id>/ route
     path("loads/carrier-assets/", load_carrier_assets, name="load-carrier-assets"),
     path("loads/active/", active_loads, name="active_loads"),
