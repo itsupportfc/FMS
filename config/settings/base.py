@@ -19,8 +19,25 @@ SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-change-this")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
 
+# render sets this variable itself
+RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME", "")
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+    CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")
+
+# Add custom domain (update this when you connect your domain)
+CUSTOM_DOMAIN = os.environ.get("CUSTOM_DOMAIN")  # e.g., "yournearbytravelagent.com"
+if CUSTOM_DOMAIN:
+    ALLOWED_HOSTS.append(CUSTOM_DOMAIN)
+    ALLOWED_HOSTS.append(f"www.{CUSTOM_DOMAIN}")
+    CSRF_TRUSTED_ORIGINS.append(f"https://{CUSTOM_DOMAIN}")
+    CSRF_TRUSTED_ORIGINS.append(f"https://www.{CUSTOM_DOMAIN}")
 
 # Application definition
 
