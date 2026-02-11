@@ -1,0 +1,49 @@
+{% if loads %}
+    <div class="card overflow-hidden p-0 max-h-[420px] overflow-y-auto">
+        <table class="min-w-full text-[14px] text-left text-gray-800">
+            <thead class="bg-gray-50 border-b border-gray-200">
+                <tr>
+                    <th class="table-header px-5 py-3">Load ID</th>
+                    <th class="table-header px-5 py-3">Broker</th>
+                    <th class="table-header px-5 py-3">Carrier</th>
+
+                    {% if show_pickup %}<th class="table-header px-5 py-3">Pickup</th>{% endif %}
+
+                    {% if show_delivery %}<th class="table-header px-5 py-3">Delivery</th>{% endif %}
+
+                    <th class="table-header px-5 py-3">Status</th>
+                    <th class="table-header px-5 py-3 text-right">Action</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for load in loads %}
+                    <tr class="border-b border-gray-200 hover:bg-gray-50">
+                        <td class="px-5 py-3 font-semibold">{{ load.load_id }}</td>
+                        <td class="px-5 py-3">{{ load.broker.name }}</td>
+                        <td class="px-5 py-3">{{ load.carrier.name|default:"—" }}</td>
+
+                        {% if show_pickup %}
+                            <td class="px-5 py-3">{{ load.pickup_target_dt|date:"M d, Y H:i"|default:"FCFS / TBD" }}</td>
+                        {% endif %}
+
+                        {% if show_delivery %}
+                            <td class="px-5 py-3">{{ load.delivery_target_dt|date:"M d, Y H:i"|default:"—" }}</td>
+                        {% endif %}
+
+                        <td class="px-5 py-3">
+                            <span class="badge-gray">{{ load.get_status_display }}</span>
+                        </td>
+
+                        <td class="px-5 py-3 text-right">
+                            <a href="{% url 'load_detail' load.load_id %}"
+                               class="text-green-600 hover:underline font-medium">View</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="card text-center py-6 text-sm text-gray-600">{{ empty_text }}</div>
+{% endif %}

@@ -3,15 +3,19 @@
         <h3 class="card-header mb-0 pb-0 border-0">Tracking History</h3>
 
         {% if "add_tracking_update" in available_actions and load.tracking_agent %}
-            <a href="{% url 'create_tracking_update' load.load_id %}"
-               class="btn-secondary btn-sm">Add Update</a>
+            {% if is_locked_by_other %}
+                <span class="text-xs text-gray-500">Read-only</span>
+            {% else %}
+                <a href="{% url 'create_tracking_update' load.load_id %}"
+                   class="btn-secondary btn-sm">Add Update</a>
+            {% endif %}
         {% endif %}
     </div>
 
     {% if tracking_updates %}
-        <ul class="info-list">
+        <div class="space-y-4">
             {% for tu in tracking_updates %}
-                <li class="info-item">
+                <div class="p-3 bg-gray-50 border border-gray-200">
                     <div class="flex justify-between items-start mb-2 gap-3">
                         <span class="font-medium text-[15px] text-gray-900">
                             {{ tu.created_at|date:"M d, H:i" }}
@@ -24,7 +28,7 @@
                         </span>
 
                         <div class="flex items-center gap-2">
-                            {% if tu.new_eta %}<span class="badge-gray">ETA updated</span>{% endif %}
+                            {% if tu.new_eta %}<span class="badge-amber ">ETA updated</span>{% endif %}
                             {% if tu.is_delayed %}<span class="badge-amber">Delayed</span>{% endif %}
                         </div>
                     </div>
@@ -36,9 +40,9 @@
                     {% if tu.new_eta %}<p class="text-[13px] text-gray-600">New ETA: {{ tu.new_eta|date:"M d, Y H:i" }}</p>{% endif %}
 
                     {% if tu.notes %}<p class="helper-text mt-1">{{ tu.notes }}</p>{% endif %}
-                </li>
+                </div>
             {% endfor %}
-        </ul>
+        </div>
     {% else %}
         <p class="helper-text italic">No tracking updates yet.</p>
     {% endif %}

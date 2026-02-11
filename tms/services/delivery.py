@@ -1,7 +1,7 @@
 from django.db import transaction
 from django.utils import timezone
 
-from tms.models import Load, LoadDocument, LoadStop
+from tms.models import Driver, Load, LoadDocument, LoadStop, Truck
 from tms.services.exceptions import ServiceError
 
 
@@ -13,7 +13,7 @@ def mark_delivered(load: Load) -> None:
     WHY: Marks load as physically delivered at destination.
     Validation:
     - Must be IN_TRANSIT
-    - All delivery stops completed or skipped
+    - All delivery stops completed
     - POD + BOL present
 
     Side Effects:
@@ -22,15 +22,13 @@ def mark_delivered(load: Load) -> None:
     if load.status != Load.Status.IN_TRANSIT:
         raise ServiceError("Load is not in IN_TRANSIT status.")
 
-    # Delivery stops must be completed or skipped
+    # Delivery stops must be completed
     delivery_stops = load.stops.filter(stop_type=LoadStop.StopType.DELIVERY)
     if delivery_stops.exists():
-        incomplete = delivery_stops.exclude(
-            status__in=[LoadStop.StopStatus.COMPLETED, LoadStop.StopStatus.SKIPPED]
-        )
+        incomplete = delivery_stops.exclude(status__in=[LoadStop.StopStatus.COMPLETED])
         if incomplete.exists():
             raise ServiceError(
-                "Cannot mark as delivered. All delivery stops must be completed or skipped."
+                "Cannot mark as delivered. All delivery stops must be completed."
             )
 
     # Required documents (POD, BOL)
@@ -46,4 +44,10 @@ def mark_delivered(load: Load) -> None:
 
     load.status = Load.Status.DELIVERED
     load.delivered_at = timezone.now()
+    # Truck
+    load.truck.current_status = Truck.TruckStatus.AVAILABLE
+    # Driver
+    load.driver.current_status = Driver.DriverStatus.AVAILABLE
     load.save(update_fields=["status", "delivered_at", "updated_at"])
+    load.truck.save(update_fields=["current_status"])
+    load.driver.save(update_fields=["current_status"])

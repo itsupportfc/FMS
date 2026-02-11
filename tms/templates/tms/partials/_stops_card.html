@@ -1,13 +1,16 @@
 <div class="card">
-    <h3 class="card-header">Stops</h3>
+    <div class="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
+        <h3 class="card-header mb-0 pb-0 border-0">Stops</h3>
+        {% if is_locked_by_other %}<span class="text-xs text-gray-500">Read-only</span>{% endif %}
+    </div>
 
-    {% if load.stops.all %}
-        <ul class="info-list">
-            {% for s in load.stops.all|dictsort:"sequence" %}
+    {% if stops %}
+        <div class="space-y-4">
+            {% for s in stops %}
                 {% include "tms/partials/_stop_card_item.html" %}
 
             {% endfor %}
-        </ul>
+        </div>
     {% else %}
         <p class="helper-text italic">No stops defined.</p>
     {% endif %}

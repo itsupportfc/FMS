@@ -11,8 +11,10 @@ dependencies = [
     "psycopg[binary]>=3.3.2",
     "python-dotenv>=1.2.1",
     "whitenoise>=6.11.0",
-    "django-crispy-forms>=2.3",
-    "crispy-tailwind>=0.5",
+    "openpyxl>=3.1.5",
+    "django-storages>=1.14.6",
+    "boto3>=1.42.45",
+    "dj-database-url>=3.1.0",
 ]
 
 [dependency-groups]

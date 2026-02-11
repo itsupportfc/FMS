@@ -15,6 +15,8 @@ Future: Can convert to REST API with Django REST Framework
 by keeping same URL structure.
 """
 
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import path
 
 from .views import (
@@ -25,6 +27,7 @@ from .views import (
     create_accessorial,
     create_duty_log_view,
     create_load,
+    create_load_note,
     create_reschedule_request,
     create_tracking_update,
     dashboard,
@@ -34,8 +37,13 @@ from .views import (
     edit_reschedule_approvals,
     load_carrier_assets,
     load_detail,
+    load_lock_ping,
+    load_lock_release,
+    load_lock_takeover,
     load_stop_row,
     loads_list,
+    my_loads,
+    my_loads_export_excel,
     search_brokers,
     search_facilities,
     stop_edit,
@@ -58,6 +66,18 @@ urlpatterns = [
         create_duty_log_view,
         name="create_duty_log",
     ),
+    path("loads/<str:load_id>/lock/ping/", load_lock_ping, name="load_lock_ping"),
+    path(
+        "loads/<str:load_id>/lock/takeover/",
+        load_lock_takeover,
+        name="load_lock_takeover",
+    ),
+    path(
+        "loads/<str:load_id>/lock/release/",
+        load_lock_release,
+        name="load_lock_release",
+    ),
+    path("loads/<str:load_id>/notes/", create_load_note, name="create_load_note"),
     path(
         "drivers/<int:driver_id>/hos-summary/",
         driver_hos_summary,
@@ -99,6 +119,12 @@ urlpatterns = [
     path("loads/<str:load_id>/", load_detail, name="load_detail"),
     # List views
     path("loads/", loads_list, name="loads_list"),
+    path("my-loads/", my_loads, name="my_loads"),
+    path("my-loads/export/", my_loads_export_excel, name="my_loads_export_excel"),
     path("carriers/", carriers_list, name="carriers_list"),
     path("drivers/", drivers_list, name="drivers_list"),
 ]
+
+# Serve media files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

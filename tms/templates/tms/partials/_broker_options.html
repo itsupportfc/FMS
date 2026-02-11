@@ -1,5 +1,5 @@
 {% for broker in brokers %}
-    <div class="broker-option"
+    <div class="broker-option px-3 py-2 text-sm text-gray-800 cursor-pointer hover:bg-gray-100 last:border-b-0"
          data-id="{{ broker.id }}"
          data-name="{{ broker.name }}">{{ broker.name }}</div>
 {% empty %}

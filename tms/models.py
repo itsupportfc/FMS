@@ -1,3 +1,4 @@
+import os
 from typing import TYPE_CHECKING
 
 from django.contrib.auth import get_user_model
@@ -7,6 +8,25 @@ from django.db.models import Manager
 from django.utils import timezone
 
 User = get_user_model()
+
+
+def carrier_document_upload_path(instance, filename):
+    """Generate upload path: carrier_documents/carrier_id/document_type/filename"""
+    ext = os.path.splitext(filename)[1]  # get file extension
+    # clean filename to avoid issues
+    clean_filename = f"{instance.document_type}{ext}"
+    return f"carrier_documents/{instance.carrier.id}/{instance.document_type}/{clean_filename}"
+
+
+def load_document_upload_path(instance, filename):
+    """Generate upload path: load_documents/load_id/document_type/filename"""
+    ext = os.path.splitext(filename)[1]
+    # Use current timestamp instead of instance.created_at (which doesn't exist yet on first save)
+    timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+    clean_filename = f"{instance.document_type}_{timestamp}{ext}"
+    return (
+        f"load_documents/{instance.load.id}/{instance.document_type}/{clean_filename}"
+    )
 
 
 class BaseModel(models.Model):
@@ -233,6 +253,10 @@ class Truck(BaseModel):
 class Driver(BaseModel):
     """Truck driver."""
 
+    class DriverStatus(models.TextChoices):
+        AVAILABLE = "available", "Available"
+        ASSIGNED = "assigned", "Assigned to Load"
+
     # Relationships
     carrier = models.ForeignKey(
         Carrier, on_delete=models.CASCADE, related_name="drivers"
@@ -270,6 +294,14 @@ class Driver(BaseModel):
         related_name="current_driver",
     )
 
+    # Current Status
+    current_status = models.CharField(
+        max_length=20,
+        choices=DriverStatus.choices,
+        default=DriverStatus.AVAILABLE,
+        help_text="Current operational status",
+    )
+
     # Notes
     notes = models.TextField(blank=True)
 
@@ -292,6 +324,8 @@ class CarrierDocument(BaseModel):
         LOR = "LOR", "Letter of Reference"
         OTHER = "OTHER", "Other"
 
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
     carrier = models.ForeignKey(
         "Carrier", on_delete=models.CASCADE, related_name="documents"
     )
@@ -301,14 +335,27 @@ class CarrierDocument(BaseModel):
         default=DocumentType.OTHER,
     )
 
-    file = models.FileField(upload_to="documents/%Y/%m/%d/")
-    original_filename = models.CharField(max_length=255, blank=True)
+    file = models.FileField(upload_to=carrier_document_upload_path, max_length=500)
+    original_filename = models.CharField(max_length=255, blank=True, editable=False)
     description = models.TextField(blank=True)
+    file_size = models.PositiveIntegerField(null=True, blank=True, editable=False)
 
     def save(self, *args, **kwargs):
-        if self.file and not self.original_filename:
-            self.original_filename = self.file.name
+        if self.file:
+            if not self.original_filename:
+                self.original_filename = self.file.name
+            if not self.file_size:
+                self.file_size = self.file.size
+
+        # Run validation
+        self.full_clean()
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """delete file froms torage when model is deleted"""
+        if self.file:
+            self.file.delete(save=False)
+        super().delete(*args, **kwargs)
 
     class Meta:
         constraints = [
@@ -317,6 +364,16 @@ class CarrierDocument(BaseModel):
                 name="unique_document_per_carrier_and_type",
             )
         ]
+        ordering = ["-created_at"]
+
+    def clean(self):
+        if self.file:
+            if self.file.size > self.MAX_FILE_SIZE:
+                raise ValidationError(
+                    {
+                        "file": f"File size cannot exceed {self.MAX_FILE_SIZE / (1024 * 1024)} MB."
+                    }
+                )
 
 
 class LoadDocument(BaseModel):
@@ -333,6 +390,7 @@ class LoadDocument(BaseModel):
 
     # NEW: Define which types are ALWAYS required
     REQUIRED_FOR_COMPLETION = ["POD", "BOL"]  # Business rule in one place
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
     # Relationships
     load = models.ForeignKey("Load", on_delete=models.CASCADE, related_name="documents")
@@ -342,14 +400,38 @@ class LoadDocument(BaseModel):
         default=DocumentType.OTHER,
     )
 
-    file = models.FileField(upload_to="documents/%Y/%m/%d/")
-    original_filename = models.CharField(max_length=255, blank=True)
+    file = models.FileField(upload_to=load_document_upload_path, max_length=500)
+    original_filename = models.CharField(max_length=255, blank=True, editable=False)
     description = models.TextField(blank=True)
+    file_size = models.PositiveIntegerField(null=True, blank=True, editable=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def clean(self):
+        if self.file:
+            if self.file.size > self.MAX_FILE_SIZE:
+                raise ValidationError(
+                    {
+                        "file": f"File size cannot exceed {self.MAX_FILE_SIZE / (1024 * 1024)} MB."
+                    }
+                )
 
     def save(self, *args, **kwargs):
-        if self.file and not self.original_filename:
-            self.original_filename = self.file.name
+        if self.file:
+            if not self.original_filename:
+                self.original_filename = self.file.name
+            if not self.file_size:
+                self.file_size = self.file.size
+        # Run validation
+        self.full_clean()
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """delete file from storage when model is deleted"""
+        if self.file:
+            self.file.delete(save=False)
+        super().delete(*args, **kwargs)
 
     def __str__(self):
         return f"{self.load.load_id} - {self.document_type} ({self.original_filename})"
@@ -447,7 +529,6 @@ class LoadStop(BaseModel):
     class StopStatus(models.TextChoices):
         PENDING = "pending", "Pending"
         COMPLETED = "completed", "Completed"
-        SKIPPED = "skipped", "Skipped"
 
     load = models.ForeignKey("Load", on_delete=models.CASCADE, related_name="stops")
     facility = models.ForeignKey(
@@ -548,10 +629,6 @@ class LoadStop(BaseModel):
         return self.status == self.StopStatus.COMPLETED
 
     @property
-    def is_skipped(self):
-        return self.status == self.StopStatus.SKIPPED
-
-    @property
     def duration_at_facility(self):
         """Duration truck spent at this stop (arrival to departure)."""
         if self.arrived_at and self.departed_at:
@@ -581,12 +658,44 @@ class LoadStop(BaseModel):
             self.departed_at = timezone.now()
         self.save(update_fields=["status", "departed_at", "updated_at"])
 
-    def mark_skipped(self):
-        """
-        V1 convenience. No state machine needed.
-        """
-        self.status = self.StopStatus.SKIPPED
-        self.save(update_fields=["status", "updated_at"])
+
+class LoadNote(BaseModel):
+    """Append-only notes for a load( author + when)"""
+
+    load = models.ForeignKey("Load", on_delete=models.CASCADE, related_name="notes")
+    author = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="load_notes"
+    )
+    body = models.TextField()
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class LoadLock(BaseModel):
+    """Locking mechanism on load."""
+
+    load = models.OneToOneField("Load", on_delete=models.CASCADE, related_name="lock")
+    locked_by = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="load_locks",
+        help_text="User who currently holds the lock",
+    )
+    locked_at = models.DateTimeField()
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["load"], name="lock_load_idx"),
+            models.Index(fields=["expires_at"], name="lock_exp_idx"),
+        ]
+        permissions = [
+            ("override_load_lock", "Can override load lock held by another user")
+        ]
+
+    def is_expired(self):
+        return timezone.now() >= self.expires_at
 
 
 class Load(BaseModel):
@@ -650,8 +759,12 @@ class Load(BaseModel):
     )
 
     # Financial
+
     miles = models.PositiveIntegerField(
         help_text="Total loaded miles", blank=True, null=True
+    )
+    deadhead_miles = models.PositiveIntegerField(
+        help_text="Empty miles to pickup (deadhead)", blank=True, null=True
     )
     rate = models.DecimalField(
         max_digits=10,
@@ -690,6 +803,9 @@ class Load(BaseModel):
     )
 
     # Milestone Timestamps (enter manually or auto set)
+    planned_eta = models.DateTimeField(
+        null=True, blank=True, help_text="Planned ETA for final delivery"
+    )
     dispatched_at = models.DateTimeField(
         null=True,
         blank=True,
@@ -711,11 +827,28 @@ class Load(BaseModel):
         help_text="When load was cancelled or TONU'd",
     )
 
-    # Notes
-    remarks = models.TextField(blank=True)
+    class Meta:
+        indexes = [
+            # Dispatcher dashboards / tracking wall
+            models.Index(fields=["status"], name="load_status_idx"),
+            models.Index(fields=["dispatcher", "status"], name="load_disp_status_idx"),
+            # Date filtering / aging / KPI windows
+            models.Index(fields=["created_at"], name="load_created_idx"),
+            # Common lookups
+            models.Index(fields=["broker"], name="load_broker_idx"),
+        ]
 
     def clean(self):
         super().clean()
+        existing = None
+        if self.pk:
+            existing = (
+                Load.objects.filter(pk=self.pk).values("driver_id", "truck_id").first()
+            )
+
+        driver_changed = existing is None or existing.get("driver_id") != self.driver_id
+        truck_changed = existing is None or existing.get("truck_id") != self.truck_id
+
         if (self.driver or self.truck) and not self.carrier:
             raise ValidationError(
                 "Carrier must be assigned if driver or truck is assigned."
@@ -724,6 +857,18 @@ class Load(BaseModel):
             raise ValidationError("Driver's carrier does not match assigned carrier.")
         if self.carrier and self.truck and self.truck.carrier != self.carrier:
             raise ValidationError("Truck's carrier does not match assigned carrier.")
+        if (
+            driver_changed
+            and self.driver
+            and self.driver.current_status != self.driver.DriverStatus.AVAILABLE
+        ):
+            raise ValidationError({"driver": "Driver is not available."})
+        if (
+            truck_changed
+            and self.truck
+            and self.truck.current_status != self.truck.TruckStatus.AVAILABLE
+        ):
+            raise ValidationError({"truck": "Truck is not available."})
 
     def save(self, *args, **kwargs):
         # Auto-calculate RPM

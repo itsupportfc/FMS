@@ -56,11 +56,7 @@
                         {{ form.load_id|add_class:"form-input" }}
                         {% if form.load_id.errors %}<p class="form-error">{{ form.load_id.errors.0 }}</p>{% endif %}
                     </div>
-                    {% comment %} <div>
-                        <label class="form-label">Broker</label>
-                        {{ form.broker|add_class:"form-select" }}
-                        {% if form.broker.errors %}<p class="form-error">{{ form.broker.errors.0 }}</p>{% endif %}
-                    </div> {% endcomment %}
+
                     <div>
                         <label for="broker_search" class="form-label">Broker</label>
 
@@ -80,7 +76,7 @@
 
                         <!-- Result dropdown -->
                         <div id="broker_results"
-                             class="hidden mt-2 border border-gray-300 rounded bg-white shadow-lg max-h-48 overflow-y-auto">
+                             class="hidden mt-2 border border-gray-300 rounded-md bg-white shadow-lg max-h-48 overflow-y-auto text-sm divide-y divide-gray-100">
                         </div>
 
                         {% if form.broker.errors %}<p class="form-error">{{ form.broker.errors.0 }}</p>{% endif %}
@@ -150,11 +146,16 @@
             <div class="section">
                 <h2 class="section-title">Financial Information</h2>
 
-                <div class="grid grid-cols-3 gap-6">
+                <div class="grid grid-cols-4 gap-6">
                     <div>
                         <label class="form-label">Miles</label>
                         {{ form.miles|add_class:"form-input" }}
                         {% if form.miles.errors %}<p class="form-error">{{ form.miles.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label class="form-label">Deadhead Miles</label>
+                        {{ form.deadhead_miles|add_class:"form-input" }}
+                        {% if form.deadhead_miles.errors %}<p class="form-error">{{ form.deadhead_miles.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
                         <label class="form-label">Rate ($)</label>
@@ -169,7 +170,6 @@
                     </div>
                 </div>
 
-                
             </div>
 
             {# ============================================================ #}
@@ -177,6 +177,12 @@
             {# ============================================================ #}
             <div class="section">
                 <h2 class="section-title">Additional Information</h2>
+
+                <div class="mt-6 mb-6">
+                    <label class="form-label">Planned ETA</label>
+                    {{ form.planned_eta|add_class:"form-input" }}
+                    {% if form.planned_eta.errors %}<p class="form-error">{{ form.planned_eta.errors.0 }}</p>{% endif %}
+                </div>
 
                 <div class="grid grid-cols-2 gap-6">
                     <div>
@@ -191,32 +197,25 @@
                     </div>
                 </div>
 
-                <div class="mt-6">
-                    <label class="form-label">Remarks</label>
-                    {{ form.remarks|add_class:"form-textarea" }}
-                    {% if form.remarks.errors %}<p class="form-error">{{ form.remarks.errors.0 }}</p>{% endif %}
-                    <p class="helper-text">Any special instructions or notes for dispatch/tracking.</p>
-                </div>
-            </div>
-        </form>
-    </div>
+            </form>
+        </div>
 
-    <script>
-        // RPM calc
-        (function() {
-            const rateInput = document.getElementById("id_rate");
-            const milesInput = document.getElementById("id_miles");
-            const rpm = document.getElementById("rate-per-mile");
+        <script>
+            // RPM calc
+            (function() {
+                const rateInput = document.getElementById("id_rate");
+                const milesInput = document.getElementById("id_miles");
+                const rpm = document.getElementById("rate-per-mile");
 
-            function calc() {
-                const r = parseFloat(rateInput?.value) || 0;
-                const m = parseFloat(milesInput?.value) || 0;
-                rpm.textContent = (r > 0 && m > 0) ? ("$" + (r / m).toFixed(2)) : "—";
-            }
-            rateInput?.addEventListener("input", calc);
-            milesInput?.addEventListener("input", calc);
-            calc();
-        })();
-    </script>
+                function calc() {
+                    const r = parseFloat(rateInput?.value) || 0;
+                    const m = parseFloat(milesInput?.value) || 0;
+                    rpm.textContent = (r > 0 && m > 0) ? ("$" + (r / m).toFixed(2)) : "—";
+                }
+                rateInput?.addEventListener("input", calc);
+                milesInput?.addEventListener("input", calc);
+                calc();
+            })();
+        </script>
 
-{% endblock %}
+    {% endblock %}

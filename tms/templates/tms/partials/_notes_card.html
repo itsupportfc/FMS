@@ -1,0 +1,40 @@
+<div class="card">
+    <div class="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
+        <h3 class="card-header mb-0 pb-0 border-0">Notes</h3>
+        {% if is_locked_by_other %}<span class="text-xs text-gray-500">Read-only</span>{% endif %}
+    </div>
+
+    <div class="space-y-3">
+        {% if notes %}
+            {% for n in notes %}
+                <div class="bg-gray-50 rounded p-3 overflow-hidden">
+                    <div class="text-xs text-gray-600 flex justify-between gap-3">
+                        <span class="truncate"><strong>{{ n.author }}</strong></span>
+                        <span class="flex-shrink-0">{{ n.created_at|date:"M d, Y H:i" }}</span>
+                    </div>
+
+                    <div class="text-sm text-gray-800 mt-1 whitespace-pre-wrap break-words">{{ n.body }}</div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="text-sm text-gray-600">No notes yet.</div>
+        {% endif %}
+    </div>
+
+    <div class="mt-4">
+        {% if not is_locked_by_other %}
+            <form method="post"
+                  action="{% url 'create_load_note' load.load_id %}"
+                  class="space-y-2">
+                {% csrf_token %}
+
+                <div class="w-full max-w-full">
+                    {# Force textarea to stay within card width #}
+                    {{ note_form.body }}
+                </div>
+
+                <button class="btn-primary w-full" type="submit">Add Note</button>
+            </form>
+        {% endif %}
+    </div>
+</div>

@@ -1,24 +1,27 @@
 <div class="card">
     <div class="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
         <h3 class="card-header mb-0 pb-0 border-0">Reschedule Requests</h3>
-        {% if "create_reschedule_request" in available_actions %}
+
+        {% if "create_reschedule_request" in available_actions and not is_locked_by_other %}
             <a href="{% url 'create_reschedule_request' load.load_id %}"
                class="btn-secondary btn-sm">New Request</a>
+        {% elif "create_reschedule_request" in available_actions and is_locked_by_other %}
+            <span class="text-xs text-gray-500">Read-only</span>
         {% endif %}
     </div>
 
     {% if reschedule_requests %}
-        <ul class="info-list">
+        <div class="space-y-4">
             {% for rr in reschedule_requests %}
-                <li class="info-item">
+                <div class="p-3 bg-gray-50 border border-gray-200">
                     <div class="flex justify-between items-center mb-2">
-                        <span class="font-medium text-[15px] text-gray-900">{{ rr.stop.sequence }}. {{ rr.stop.location.name }}</span>
                         {% if rr.is_fully_approved %}
                             <span class="badge-green">Approved</span>
                         {% else %}
                             <span class="badge-amber">Pending</span>
                         {% endif %}
                     </div>
+
                     <p class="text-[13px] text-gray-600">
                         Created: {{ rr.created_at|date:"M d, H:i" }} by {{ rr.created_by.get_full_name }}
                     </p>
@@ -38,29 +41,38 @@
                                 {% else %}
                                     ○
                                 {% endif %}
-                            Consignee</span>
+                                Consignee
+                            </span>
                             <span>
                                 {% if rr.broker_approved %}
                                     ✓
                                 {% else %}
                                     ○
                                 {% endif %}
-                            Broker</span>
+                                Broker
+                            </span>
                             <span>
                                 {% if rr.manager_approved %}
                                     ✓
                                 {% else %}
                                     ○
                                 {% endif %}
-                            Manager</span>
+                                Manager
+                            </span>
                         </div>
-                        <a href="{% url 'edit_reschedule_approvals' load.load_id rr.id %}"
-                           class="btn-ghost btn-sm mt-3">View/Edit</a>
+
+                        {% if is_locked_by_other %}
+                            <span class="inline-block mt-3 text-xs text-gray-500">View/Edit disabled</span>
+                        {% else %}
+                            <a href="{% url 'edit_reschedule_approvals' load.load_id rr.id %}"
+                               class="btn-ghost btn-sm mt-3">View/Edit</a>
+                        {% endif %}
                     {% endif %}
+
                     {% if rr.remarks %}<p class="helper-text mt-2">{{ rr.remarks }}</p>{% endif %}
-                </li>
+                </div>
             {% endfor %}
-        </ul>
+        </div>
     {% else %}
         <p class="helper-text italic">No reschedule requests yet.</p>
     {% endif %}

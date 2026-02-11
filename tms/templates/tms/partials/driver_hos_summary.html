@@ -29,7 +29,7 @@
         <div class="alert-warning mb-3">
             <p class="font-semibold mb-2">⚠ Warnings:</p>
             <ul class="list-disc list-inside space-y-1 text-[13px]">
-                {% for w in summary.warnings %}<li>{{ w }}</li>{% endfor %}
+                {% for w in summary.warnings %}{{ w }}{% endfor %}
             </ul>
         </div>
     {% else %}

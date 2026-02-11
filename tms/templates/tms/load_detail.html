@@ -5,6 +5,34 @@
 {% block content %}
     {% include "tms/partials/_load_header.html" %}
 
+    {% if lock and not lock.is_expired %}
+        {% if is_locked_by_other %}
+            <div class="alert-warning mb-4">
+                <div class="flex items-center justify-between gap-4">
+                    <div>
+                        <strong>Read-only:</strong>
+                        This load is being edited by <strong>{{ lock.locked_by }}</strong>.
+                    </div>
+                    {% if can_take_over %}
+                        <form method="post" action="{% url 'load_lock_takeover' load.load_id %}">
+                            {% csrf_token %}
+                            <button class="btn-danger" type="submit">Take Over</button>
+                        </form>
+                    {% endif %}
+                </div>
+                {% comment %} <div class="text-sm mt-2">Lock auto-expires at {{ lock.expires_at }}.</div> {% endcomment %}
+            </div>
+        {% else %}
+            <div class="alert-info mb-4">
+                You are editing this load. Lock expires in 60 seconds (auto-extends while open).
+            </div>
+        {% endif %}
+    {% endif %}
+
+    <div hx-get="{% url 'load_lock_ping' load.load_id %}"
+         hx-trigger="every 25s"
+         hx-swap="none"></div>
+
     <div class="max-w-7xl mx-auto px-8 py-6">
         {% if messages %}
             <div class="mb-6 space-y-3">
@@ -39,6 +67,7 @@
             {# RIGHT COLUMN: Sidebar (1/3 width) #}
             <div class="space-y-6">
                 {% include "tms/partials/_actions_card.html" %}
+                {% include "tms/partials/_notes_card.html" %}
                 {% include "tms/partials/_documents_card.html" %}
                 {% include "tms/partials/_tracking_history_card.html" %}
                 {% include "tms/partials/_reschedule_card.html" %}

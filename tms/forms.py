@@ -1,7 +1,8 @@
 # forms.py
-from typing import Optional, cast
+from typing import Any, Optional, cast
 
 from django import forms
+from django.core.exceptions import ValidationError
 from django.db.models import QuerySet
 from django.forms import ModelChoiceField
 from django.utils import timezone
@@ -12,6 +13,7 @@ from .models import (
     DutyLog,
     Load,
     LoadDocument,
+    LoadNote,
     LoadStop,
     RescheduleRequest,
     TrackingUpdate,
@@ -44,17 +46,21 @@ class LoadForm(forms.ModelForm):
             # financials
             "rate",
             "miles",
+            "deadhead_miles",
+            # "commission_type",
+            # "dispatcher_commission",
             # carrier
             "carrier",
             "driver",
             "truck",
+            "planned_eta",
             # Timestamps (for edit view - tracking agent fills these in)
             # "dispatched_at",
             # "delivered_at",
             # "completed_at",
             # "cancelled_at",
             # Notes
-            "remarks",
+            # "remarks",
         ]
 
         # Widget customization: Convert datetime fields to HTML5 datetime-local
@@ -66,6 +72,9 @@ class LoadForm(forms.ModelForm):
                     "hx-target": "#carrier-assets",
                     "hx-trigger": "change",
                 }
+            ),
+            "planned_eta": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "60"}
             ),
             # "dispatched_at": forms.DateTimeInput(
             #     attrs={"type": "datetime-local", "step": "60"}
@@ -79,7 +88,7 @@ class LoadForm(forms.ModelForm):
             # "cancelled_at": forms.DateTimeInput(
             #     attrs={"type": "datetime-local", "step": "60"}
             # ),
-            "remarks": forms.Textarea(attrs={"rows": 4}),  # Multi-line text
+            # "remarks": forms.Textarea(attrs={"rows": 4}),  # Multi-line text
         }
 
     def __init__(self, *args, **kwargs):
@@ -107,7 +116,8 @@ class LoadForm(forms.ModelForm):
             "load_id": "Internal or broker load ID",
             "rate": "0.00",
             "miles": "0",
-            "remarks": "Notes for dispatch/tracking",
+            "deadhead_miles": "0",
+            # "remarks": "Notes for dispatch/tracking",
         }
 
         for name, field in self.fields.items():
@@ -135,12 +145,13 @@ class LoadForm(forms.ModelForm):
             driver_field.queryset = Driver.objects.none()
             truck_field.queryset = Truck.objects.none()
 
-        # Lock financial fields after IN_TRANSIT
+        # Lock fields after DISPATCHED
         if (
             self.instance
             and self.instance.pk
             and self.instance.status
             in [
+                Load.Status.DISPATCHED,
                 Load.Status.IN_TRANSIT,
                 Load.Status.DELIVERED,
                 Load.Status.COMPLETED,
@@ -154,32 +165,18 @@ class LoadForm(forms.ModelForm):
                 "broker",
                 "rate",
                 "miles",
+                "deadhead_miles",
                 "carrier",
                 "driver",
                 "truck",
+                # "dispatcher_commission",
+                # "commission_type",
             ]
             for f in lock_fields:
                 if f in self.fields:
                     self.fields[f].disabled = True
                     self.fields[f].widget.attrs.update({"class": disabled_classes})
 
-        # Optional: role-based disabling
-        # Dispatcher edits most fields; tracking agent should not edit financials/assets generally.
-        if self.user and getattr(self.user, "role", None) == "tracking_agent":
-            disabled_classes = "bg-gray-100 cursor-not-allowed text-gray-600"
-            tracker_lock = [
-                "load_id",
-                "broker",
-                "rate",
-                "miles",
-                "carrier",
-                "driver",
-                "truck",
-            ]
-            for f in tracker_lock:
-                if f in self.fields:
-                    self.fields[f].disabled = True
-                    self.fields[f].widget.attrs.update({"class": disabled_classes})
 
 
 class LoadStopForm(forms.ModelForm):
@@ -228,6 +225,21 @@ LoadStopFormSet = forms.inlineformset_factory(
     min_num=2,  # REQUIRE at least 2 stops
     validate_min=True,  # enforce min_num validation
 )
+
+
+class LoadNoteForm(forms.ModelForm):
+    class Meta:
+        model = LoadNote
+        fields = ["body"]
+        widgets = {
+            "body": forms.Textarea(
+                attrs={
+                    "rows": 2,
+                    "placeholder": "Add a note...",
+                    "class": "form-textarea w-full max-w-full box-border resize-y",
+                }
+            ),
+        }
 
 
 class DocumentUploadForm(forms.ModelForm):
@@ -281,6 +293,18 @@ class TrackingUpdateForm(forms.ModelForm):
                 attrs={"rows": 3, "placeholder": "Add brief notes..."}
             ),
         }
+
+    def clean(self):
+        cleaned = super().clean()
+        is_delayed = cleaned.get("is_delayed")
+        delay_reason = cleaned.get("delay_reason")
+
+        if is_delayed and not delay_reason:
+            self.add_error(
+                "delay_reason", "Delay reason is required when marked delayed."
+            )
+
+        return cleaned
 
 
 class RescheduleRequestForm(forms.ModelForm):
@@ -481,3 +505,48 @@ class DutyLogForm(forms.ModelForm):
                 attrs={"rows": 3, "placeholder": "Add brief notes..."}
             ),
         }
+
+
+class DateTimeLocalInput(forms.DateTimeInput):
+    input_type = "datetime-local"
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault(
+            "attrs",
+            {
+                "class": "form-input w-full",
+            },
+        )
+        super().__init__(*args, **kwargs)
+
+
+class StopEditForm(forms.Form):
+    arrival_time = forms.DateTimeField(
+        required=False,
+        input_formats=["%Y-%m-%dT%H:%M"],
+        widget=DateTimeLocalInput(),
+    )
+
+    departure_time = forms.DateTimeField(
+        required=False,
+        input_formats=["%Y-%m-%dT%H:%M"],
+        widget=DateTimeLocalInput(),
+    )
+
+    def __init__(self, *args, stop=None, **kwargs):
+        self.stop = stop
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        cleaned = super().clean()
+
+        arrival = cleaned.get("arrival_time") or self.stop.arrived_at
+        departure = cleaned.get("departure_time") or self.stop.departed_at
+
+        if cleaned.get("departure_time") and not arrival:
+            raise ValidationError("Arrival time is required before departure time.")
+
+        if arrival and departure and arrival >= departure:
+            raise ValidationError("Departure time must be after arrival time.")
+
+        return cleaned

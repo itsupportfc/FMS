@@ -1,121 +1,115 @@
 <!-- Sticky Header -->
-<div class="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm">
-    <div class="max-w-[1600px] mx-auto px-8 py-3">
-        <div class="flex items-center justify-between gap-6">
-            <div class="flex items-center gap-4">
-                <div>
-                    <h1 class="text-xl font-bold text-gray-900">Dispatcher Dashboard</h1>
-                    <p class="text-sm text-gray-500">{{ booked_count|add:dispatched_count }} active loads · Updated {% now "H:i" %}</p>
-                </div>
+<div class="page-header">
+    <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div class="flex flex-col gap-3">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Dispatcher Dashboard</h1>
+                <p class="text-sm text-gray-600">Quick overview of your loads and tasks.</p>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Dispatcher Stats -->
-<div class="max-w-[1600px] mx-auto px-8 py-8">
-    <div class="mb-8"></div>
-
-    <div class="grid grid-cols-5 gap-6 mb-8">
-        <div class="card text-center border-t-4 border-green-500">
-            <div class="text-[13px] font-medium text-gray-500 uppercase tracking-wide mb-2">Booked</div>
-            <div class="text-4xl font-extrabold tracking-tight">{{ booked_count }}</div>
-        </div>
-
-        <div class="card text-center border-t-4 border-blue-500">
-            <div class="text-[13px] font-medium text-gray-500 uppercase tracking-wide mb-2">Dispatched</div>
-            <div class="text-4xl font-extrabold tracking-tight">{{ dispatched_count }}</div>
-        </div>
-
-        <div class="card text-center border-t-4 border-amber-500">
-            <div class="text-[13px] font-medium text-gray-500 uppercase tracking-wide mb-2">Awaiting Handover</div>
-            <div class="text-4xl font-extrabold tracking-tight">{{ handover_pending_count }}</div>
-        </div>
-
-        <div class="card text-center border-t-4 border-red-500">
-            <div class="text-[13px] font-medium text-gray-500 uppercase tracking-wide mb-2">RC Missing</div>
-            <div class="text-4xl font-extrabold tracking-tight">{{ rc_missing_count }}</div>
-        </div>
-
-        <div class="card text-center border-t-4 border-gray-500">
-            <div class="text-[13px] font-medium text-gray-500 uppercase tracking-wide mb-2">Total Active</div>
-            <div class="text-4xl font-extrabold tracking-tight">{{ booked_count|add:dispatched_count }}</div>
-        </div>
+{% if messages %}
+    <div class="mb-6 space-y-3">
+        {% for message in messages %}
+            <div class="{% if message.tags == 'error' %}
+                            alert-error
+                        {% elif message.tags == 'success' %}
+                            alert-success
+                        {% elif message.tags == 'warning' %}
+                            alert-warning
+                        {% else %}
+                            alert-info
+                        {% endif %}">{{ message }}</div>
+        {% endfor %}
     </div>
+{% endif %}
 
-    <!-- Dispatcher Bento Grid -->
-    <div class="grid grid-cols-2 gap-6">
-        <!-- Left Column - Booked Loads -->
-        <div class="card">
-            <div class="flex items-center justify-between mb-6">
-                <h3 class="text-lg font-semibold text-gray-900">
-                    Booked Loads
-                    <span class="text-sm font-medium text-amber-600 ml-2">(Action Required)</span>
-                </h3>
-                <span class="badge-gray">{{ booked_count }} loads</span>
-            </div>
-            <div class="space-y-3 max-h-[560px] overflow-y-auto pr-1">
-                {% for load in booked_loads %}
-                    <div class="load-card grid grid-cols-2 gap-3 items-center">
+<div class="bg-gray-50/60">
+    <div class="max-w-[1600px] mx-auto px-6 lg:px-8 py-6">
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
-                        <div class="col-span-2 flex justify-between items-center">
-                            <span class="font-semibold text-gray-900">{{ load.load_id }}</span>
-                            <span class="text-[12px] text-gray-500">{{ load.broker.name }}</span>
-                        </div>
+            <!-- ========================= -->
+            <!-- RC MISSING -->
+            <!-- ========================= -->
+            <section class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        RC Missing
+                        <span class="ml-2 badge-red">{{ rc_missing_loads|length }}</span>
+                    </h2>
+                </div>
+                <div class="px-4 pb-4 pt-3">
+                    {% include "partials/_dashboard_load_table.html" with loads=rc_missing_loads show_pickup=True show_delivery=True empty_text="All booked loads have RCs." %}
 
-                        <div class="col-span-2 text-[14px] text-gray-700">
-                            <span class="font-semibold text-gray-900">FROM</span>
-                            {{ load.origin }}
-                            →
-                            <span class="font-semibold text-gray-900">TO</span>
-                            {{ load.destination }}
-                        </div>
+                </div>
+            </section>
 
-                        <a href="{% url 'load_detail' load.load_id %}"
-                           class="btn-primary col-span-2 text-center">Dispatch Load</a>
-                    </div>
-                {% empty %}
-                    <div class="load-card text-center text-gray-500 italic">No booked loads</div>
-                {% endfor %}
-            </div>
-        </div>
+            <!-- ========================= -->
+            <!-- DELAYED -->
+            <!-- ========================= -->
+            <section class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        Delayed
+                        <span class="ml-2 badge-amber">{{ delayed_loads|length }}</span>
+                    </h2>
+                </div>
+                <div class="px-4 pb-4 pt-3">
+                    {% include "partials/_dashboard_load_table.html" with loads=delayed_loads show_pickup=True show_delivery=True empty_text="No delayed loads." %}
 
-        <!-- Right Column - Dispatched Loads (Handover Pending) -->
-        <div class="card">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold text-gray-900">
-                    Dispatched Loads
-                    <span class="text-sm font-medium text-blue-600 ml-2">(Handover Pending)</span>
-                </h3>
-                <span class="badge-blue">{{ handover_pending_count }} loads</span>
-            </div>
-            <div class="space-y-3 max-h-[560px] overflow-y-auto pr-1">
-                {% for load in handover_loads %}
-                    <div class="load-card grid grid-cols-2 gap-3 items-center">
+                </div>
+            </section>
 
-                        <div class="col-span-2 flex justify-between items-center">
-                            <div>
-                                <span class="font-semibold text-gray-900">{{ load.load_id }}</span>
-                                <div class="text-[12px] text-gray-500 mt-0.5">Driver: {{ load.driver.full_name }}</div>
-                            </div>
-                            <span class="badge-gray">{{ load.truck }}</span>
-                        </div>
+            <!-- ========================= -->
+            <!-- IN TRANSIT -->
+            <!-- ========================= -->
+            <section class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        In Transit
+                        <span class="ml-2 badge-blue">{{ in_transit_loads|length }}</span>
+                    </h2>
+                </div>
+                <div class="px-4 pb-4 pt-3">
+                    {% include "partials/_dashboard_load_table.html" with loads=in_transit_loads show_pickup=False show_delivery=True empty_text="No loads in transit." %}
 
-                        <div class="col-span-2 text-[14px] text-gray-700">
-                            <span class="font-semibold text-gray-900">FROM</span>
-                            {{ load.origin }}
-                            →
-                            <span class="font-semibold text-gray-900">TO</span>
-                            {{ load.destination }}
-                        </div>
+                </div>
+            </section>
 
-                        <a href="{% url 'load_detail' load.load_id %}"
-                           class="btn-secondary col-span-2 text-center">Handover to Tracking</a>
-                    </div>
-                {% empty %}
-                    <div class="load-card text-center text-gray-500 italic">No loads awaiting handover</div>
-                {% endfor %}
-            </div>
+            <!-- ========================= -->
+            <!-- PICKUP TODAY -->
+            <!-- ========================= -->
+            <section class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        Pickup Today ({{ today }})
+                        <span class="ml-2 badge-gray">{{ pickup_today_loads|length }}</span>
+                    </h2>
+                </div>
+                <div class="px-4 pb-4 pt-3">
+                    {% include "partials/_dashboard_load_table.html" with loads=pickup_today_loads show_pickup=True show_delivery=False empty_text="No pickups scheduled today." %}
+
+                </div>
+            </section>
+
+            <!-- ========================= -->
+            <!-- DELIVERY TODAY -->
+            <!-- ========================= -->
+            <section class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        Delivery Today ({{ today }})
+                        <span class="ml-2 badge-green">{{ delivery_today_loads|length }}</span>
+                    </h2>
+                </div>
+                <div class="px-4 pb-4 pt-3">
+                    {% include "partials/_dashboard_load_table.html" with loads=delivery_today_loads show_pickup=False show_delivery=True empty_text="No deliveries scheduled today." %}
+
+                </div>
+            </section>
+
         </div>
     </div>
 </div>

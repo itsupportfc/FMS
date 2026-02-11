@@ -21,6 +21,7 @@ staticfiles/
 
 # Pytest
 .pytest_cache/
+.mypy_cache/
 
 # MD files
 *.md

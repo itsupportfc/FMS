@@ -1,16 +1,21 @@
 <div class="card">
     <div class="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
         <h3 class="card-header mb-0 pb-0 border-0">Extra Charges</h3>
+
         {% if "add_accessorial" in available_actions %}
-            <a href="{% url 'create_accessorial' load.load_id %}"
-               class="btn-secondary btn-sm">Add Charge</a>
+            {% if is_locked_by_other %}
+                <span class="text-xs text-gray-500">Read-only</span>
+            {% else %}
+                <a href="{% url 'create_accessorial' load.load_id %}"
+                   class="btn-secondary btn-sm">Add Charge</a>
+            {% endif %}
         {% endif %}
     </div>
 
-    {% if load.accessorials.all %}
-        <ul class="info-list">
-            {% for charge in load.accessorials.all %}
-                <li class="info-item">
+    {% if accessorials %}
+        <div class="space-y-4">
+            {% for charge in accessorials %}
+                <div class="p-3 bg-gray-50 border border-gray-200">
                     <div class="flex items-center justify-between mb-2">
                         <span class="font-semibold text-[15px] text-gray-900">{{ charge.get_charge_type_display }}</span>
                         {% if charge.is_approved %}
@@ -68,12 +73,17 @@
                                 {% endif %}
                             Broker</span>
                         </div>
-                        <a href="{% url 'edit_accessorial' load.load_id charge.id %}"
-                           class="btn-ghost btn-sm mt-3">Edit</a>
+
+                        {% if is_locked_by_other %}
+                            <span class="inline-block mt-3 text-xs text-gray-500">Edit disabled</span>
+                        {% else %}
+                            <a href="{% url 'edit_accessorial' load.load_id charge.id %}"
+                               class="btn-ghost btn-sm mt-3">Edit</a>
+                        {% endif %}
                     {% endif %}
-                </li>
+                </div>
             {% endfor %}
-        </ul>
+        </div>
     {% else %}
         <p class="helper-text italic">No charges yet.</p>
     {% endif %}

@@ -13,10 +13,13 @@
                       class="space-y-3">
                     {% csrf_token %}
 
-                    <label class="form-label">Assign to Tracking Agent</label>
-                    <select name="tracking_agent" required class="form-select">
+                    <label class="form-label">Assign to Agent</label>
+                    <select name="tracking_agent"
+                            required
+                            class="form-select"
+                            {% if is_locked_by_other %}disabled{% endif %}>
                         <option value="">Select agent...</option>
-                        {% for agent in tracking_agents %}
+                        {% for agent in agents %}
                             <option value="{{ agent.id }}">
                                 {% if agent.get_full_name %}
                                     {{ agent.get_full_name }}
@@ -30,9 +33,14 @@
                     <textarea name="instructions"
                               placeholder="Special instructions (optional)"
                               class="form-textarea"
-                              rows="2"></textarea>
+                              rows="2"
+                              {% if is_locked_by_other %}
+                                  disabled
+                              {% endif %}></textarea>
 
-                    <button type="submit" class="btn-primary w-full">Handover to Tracking</button>
+                    <button type="submit"
+                            class="btn-primary w-full"
+                            {% if is_locked_by_other %}disabled{% endif %}>Handover to Tracking</button>
                 </form>
             {% else %}
                 {# Optional UX: if BOOKED but no handover action, show a hint (does not affect logic) #}
@@ -51,7 +59,9 @@
                       action="{% url 'change_status' load.load_id 'start_transit' %}"
                       class="space-y-3">
                     {% csrf_token %}
-                    <button type="submit" class="btn-primary w-full">Start Transit</button>
+                    <button type="submit"
+                            class="btn-primary w-full"
+                            {% if is_locked_by_other %}disabled{% endif %}>Start Transit</button>
                 </form>
             {% endif %}
 
@@ -61,7 +71,9 @@
                       action="{% url 'change_status' load.load_id 'mark_delivered' %}"
                       class="space-y-3">
                     {% csrf_token %}
-                    <button type="submit" class="btn-primary w-full">Mark as Delivered</button>
+                    <button type="submit"
+                            class="btn-primary w-full"
+                            {% if is_locked_by_other %}disabled{% endif %}>Mark as Delivered</button>
                 </form>
             {% endif %}
 
@@ -71,13 +83,18 @@
                       action="{% url 'change_status' load.load_id 'complete_load' %}"
                       class="space-y-3">
                     {% csrf_token %}
-                    <button type="submit" class="btn-secondary w-full">Complete Load</button>
+                    <button type="submit"
+                            class="btn-secondary w-full"
+                            {% if is_locked_by_other %}disabled{% endif %}>Complete Load</button>
                 </form>
             {% endif %}
 
             {# Cancel #}
             {% if "cancel_load" in actions %}
-                <button type="button" onclick="showCancelModal()" class="btn-danger w-full">Cancel Load</button>
+                <button type="button"
+                        onclick="showCancelModal()"
+                        class="btn-danger w-full"
+                        {% if is_locked_by_other %}disabled{% endif %}>Cancel Load</button>
             {% endif %}
 
         {% endwith %}

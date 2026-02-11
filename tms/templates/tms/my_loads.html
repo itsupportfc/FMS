@@ -5,8 +5,8 @@
     <div class="page-header mb-6 px-8">
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900">{{ title|default:"All Loads" }}</h1>
-                <p class="text-sm text-gray-600">{{ subtitle|default:"Manage all load bookings" }}</p>
+                <h1 class="text-2xl font-bold text-gray-900">{{ title|default:"My Loads" }}</h1>
+                <p class="text-sm text-gray-600">{{ subtitle|default:"Manage all my load bookings" }}</p>
             </div>
 
             <form method="get" class="flex items-center gap-2">
@@ -36,7 +36,10 @@
                        class="form-input"
                        placeholder="To" />
                 <button type="submit" class="btn-secondary">Search</button>
-                <a href="{% url 'loads_list' %}" class="btn-secondary">Clear</a>
+                <a href="{% url 'my_loads' %}" class="btn-secondary">Clear</a>
+                <a href="{% url 'my_loads_export_excel' %}?{{ request.GET.urlencode }}"
+                   class="btn-primary">Download</a>
+
             </form>
         </div>
     </div>
@@ -50,41 +53,31 @@
                         <tr>
                             <th class="table-header px-6 py-3">Load ID</th>
                             <th class="table-header px-6 py-3">Broker</th>
-                            <th class="table-header px-6 py-3">Carrier</th>
-                            <th class="table-header px-6 py-3">Driver</th>
+                            <th class="table-header px-6 py-3">Truck No</th>
                             <th class="table-header px-6 py-3">Pickup</th>
                             <th class="table-header px-6 py-3">Delivery</th>
-                            <th class="table-header px-6 py-3">Status</th>
+                            <th class="table-header px-6 py-3">Miles</th>
+                            <th class="table-header px-6 py-3">Deadhead Miles</th>
+                            <th class="table-header px-6 py-3">Rate</th>
+                            <th class="table-header px-6 py-3">Extra Charges</th>
+                            <th class="table-header px-6 py-3 text-right">RPM</th>
                             <th class="table-header px-6 py-3 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for load in loads %}
-                            <tr class="border-b border-gray-200 hover:bg-gray-50 transition-colors
-                                       {% if load.is_locked %}bg-red-50{% endif %}">
+                            <tr class="border-b border-gray-200 hover:bg-gray-50 transition-colors">
                                 <td class="table-cell px-6 py-4 font-semibold text-gray-900">{{ load.load_id }}</td>
                                 <td class="table-cell px-6 py-4">{{ load.broker.name }}</td>
-                                <td class="table-cell px-6 py-4">{{ load.carrier.name|default:"—" }}</td>
-                                <td class="table-cell px-6 py-4">{{ load.driver.full_name|default:"—" }}</td>
-                                <td class="table-cell px-6 py-4">{{ load.origin }}</td>
-                                <td class="table-cell px-6 py-4">{{ load.destination }}</td>
-                                <td class="table-cell px-6 py-4">
-                                    {% if load.status == 'booked' %}
-                                        <span class="badge-gray">{{ load.get_status_display }}</span>
-                                    {% elif load.status == 'dispatched' %}
-                                        <span class="badge-blue">{{ load.get_status_display }}</span>
-                                    {% elif load.status == 'in_transit' %}
-                                        <span class="badge-amber">{{ load.get_status_display }}</span>
-                                    {% elif load.status == 'delivered' %}
-                                        <span class="badge-green">{{ load.get_status_display }}</span>
-                                    {% elif load.status == 'completed' %}
-                                        <span class="badge-gray">{{ load.get_status_display }}</span>
-                                    {% elif load.status == 'cancelled' %}
-                                        <span class="badge-red">{{ load.get_status_display }}</span>
-                                    {% else %}
-                                        {{ load.get_status_display }}
-                                    {% endif %}
-                                </td>
+                                <td class="table-cell px-6 py-4">{{ load.truck.truck_number }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.pickup_actual|date:"M d, Y H:i"|default:"—" }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.delivery_actual|date:"M d, Y H:i"|default:"—" }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.miles }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.deadhead_miles }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.total_cost|floatformat:2 }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.accessorial_total|floatformat:2 }}</td>
+                                <td class="table-cell px-6 py-4">{{ load.rpm|floatformat:2 }}</td>
+
                                 <td class="table-cell px-6 py-4 text-right">
                                     <a href="{% url 'load_detail' load.load_id %}"
                                        class="text-green-600 hover:text-green-700 font-medium hover:underline">View</a>

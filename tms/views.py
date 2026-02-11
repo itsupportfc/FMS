@@ -1,14 +1,38 @@
+from io import BytesIO
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db.models import (
+    BooleanField,
+    Case,
+    DateTimeField,
+    DecimalField,
+    Exists,
+    ExpressionWrapper,
+    F,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
 
 from accounts.models import User
 from tms.policies.load_actions import get_available_actions
+from tms.policies.roles import has_any_role, is_accounts, is_dispatcher
+from tms.services import load_locks
 from tms.services.cancel import cancel_load
 from tms.services.completion import complete_load
 from tms.services.delivery import mark_delivered
@@ -18,15 +42,18 @@ from tms.services.handover import handover_to_tracking
 from tms.services.hos import HOSCalculator
 from tms.services.load_creation import create_load_with_stops
 from tms.services.transit import start_transit
+from tms.utils.locks import require_load_lock
 
 from .forms import (
     AccessorialForm,
     DocumentUploadForm,
     DutyLogForm,
     LoadForm,
+    LoadNoteForm,
     LoadStopForm,
     LoadStopFormSet,
     RescheduleRequestForm,
+    StopEditForm,
     TrackingUpdateForm,
 )
 from .models import (
@@ -37,8 +64,10 @@ from .models import (
     Facility,
     Load,
     LoadDocument,
+    LoadNote,
     LoadStop,
     RescheduleRequest,
+    TrackingUpdate,
     Truck,
 )
 
@@ -49,117 +78,111 @@ def dashboard(request):
 
     user = request.user
 
-    if user.role == "dispatcher":
-        dashboard_template = "dashboard/_dispatcher_dashboard.html"
+    if is_dispatcher(user):
+        today = timezone.localdate()
 
-        booked_loads = (
-            Load.objects.filter(status=Load.Status.BOOKED)
-            .select_related("broker", "carrier", "driver", "truck")
-            .prefetch_related("stops", "documents")
+        rc_exists_sq = LoadDocument.objects.filter(
+            load=OuterRef("pk"), document_type=LoadDocument.DocumentType.RC
+        )
+        latest_new_eta_sq = (
+            TrackingUpdate.objects.filter(load=OuterRef("pk"), new_eta__isnull=False)
+            .order_by("-created_at")
+            .values("new_eta")[:1]
+        )
+        # 3) "Target pickup time" for first pickup stop:
+        #    Use appt_start/appt_end for BOTH APPT and FCFS if present, else NULL -> show "FCFS/TBD" in UI.
+        first_pickup_appt_start_sq = (
+            LoadStop.objects.filter(
+                load=OuterRef("pk"), stop_type=LoadStop.StopType.PICKUP
+            )
+            .order_by("sequence")
+            .values("appt_start")[:1]
+        )
+        first_pickup_appt_end_sq = (
+            LoadStop.objects.filter(
+                load=OuterRef("pk"), stop_type=LoadStop.StopType.PICKUP
+            )
+            .order_by("sequence")
+            .values("appt_end")[:1]
         )
 
-        dispatched_loads = (
-            Load.objects.filter(status=Load.Status.DISPATCHED)
-            .select_related("broker", "carrier", "driver", "truck")
-            .prefetch_related("stops", "documents")
+        base_qs = (
+            Load.objects.filter(dispatcher=user)
+            .select_related("broker", "carrier", "truck", "driver")
+            .annotate(
+                # RC missing bucket need this
+                has_rc=Exists(rc_exists_sq),
+                # Pickup Today needs this (scheduled/target pickup time)
+                pickup_target_dt=Coalesce(
+                    Subquery(first_pickup_appt_start_sq, output_field=DateTimeField()),
+                    Subquery(first_pickup_appt_end_sq, output_field=DateTimeField()),
+                ),
+                # Delivery Today uses load.planned_eta directly
+                delivery_target_dt=F("planned_eta"),
+                # Delayed: current ETA = latest new_eta else planned_eta
+                current_eta_dt=Coalesce(
+                    Subquery(latest_new_eta_sq, output_field=DateTimeField()),
+                    F("planned_eta"),
+                ),
+                planned_eta_dt=F("planned_eta"),
+            )
+            .annotate(
+                is_late=Case(
+                    When(
+                        Q(current_eta_dt__isnull=False)
+                        & Q(planned_eta_dt__isnull=False)
+                        & Q(current_eta_dt__gt=F("planned_eta_dt")),
+                        then=Value(True),
+                    ),
+                    default=Value(False),
+                    output_field=BooleanField(),
+                )
+            )
+            .order_by("-created_at")
         )
 
-        rc_missing_loads = booked_loads.exclude(
-            documents__document_type=LoadDocument.DocumentType.RC
+        # 1) RC Missing: created, status=booked, but RC missing
+        rc_missing_loads = base_qs.filter(status=Load.Status.BOOKED, has_rc=False)
+
+        # 2) Delayed
+        delayed_loads = base_qs.filter(is_late=True).exclude(
+            status__in=[
+                Load.Status.CANCELLED,
+                Load.Status.COMPLETED,
+                Load.Status.DELIVERED,
+            ]
+        )
+        # 3) In Transit
+        in_transit_loads = base_qs.filter(status=Load.Status.IN_TRANSIT)
+        # 4) Pickup Today (only loads that actually have a target pickup datetime)
+        pickup_today_loads = base_qs.filter(pickup_target_dt__date=today).exclude(
+            status__in=[
+                Load.Status.CANCELLED,
+                Load.Status.COMPLETED,
+                Load.Status.DELIVERED,
+            ]
+        )
+        # 5) Delivery Today (planned_eta date = today)
+        delivery_today_loads = base_qs.filter(delivery_target_dt__date=today).exclude(
+            status__in=[
+                Load.Status.CANCELLED,
+                Load.Status.COMPLETED,
+                Load.Status.DELIVERED,
+            ]
         )
 
         context = {
-            "dashboard_template": dashboard_template,
-            # KPI numbers
-            "booked_count": booked_loads.count(),
-            "dispatched_count": dispatched_loads.count(),
-            "handover_pending_count": dispatched_loads.count(),
-            "rc_missing_count": rc_missing_loads.count(),
-            # Tables
-            "booked_loads": booked_loads[:10],
-            "handover_loads": dispatched_loads[:10],
+            "rc_missing_loads": rc_missing_loads,
+            "delayed_loads": delayed_loads,
+            "in_transit_loads": in_transit_loads,
+            "pickup_today_loads": pickup_today_loads,
+            "delivery_today_loads": delivery_today_loads,
+            "today": today,
+            "dashboard_template": "dashboard/_dispatcher_dashboard.html",
         }
-    elif user.role == "tracking_agent":
-        dashboard_template = "dashboard/_tracker_dashboard.html"
+        return render(request, "dashboard/dashboard.html", context)
 
-        # Get loads assigned to this tracking agent
-        # WHY: Tracker only sees loads they're responsible for
-        my_loads = Load.objects.filter(tracking_agent=user)
-
-        # Active loads (in transit or dispatched, not completed/cancelled)
-        active_loads = (
-            my_loads.filter(status__in=[Load.Status.DISPATCHED, Load.Status.IN_TRANSIT])
-            .select_related("broker", "carrier", "driver", "truck")
-            .prefetch_related("stops", "documents")
-        )
-
-        # Loads awaiting transit start (handed over but not yet started)
-        awaiting_start = (
-            my_loads.filter(status=Load.Status.DISPATCHED)
-            .select_related("broker", "carrier", "driver", "truck")
-            .prefetch_related("stops", "documents")
-        )
-
-        # Loads currently in transit (need tracking updates)
-        in_transit = my_loads.filter(status=Load.Status.IN_TRANSIT).prefetch_related(
-            "stops"
-        )
-
-        context = {
-            "dashboard_template": dashboard_template,
-            # KPI numbers
-            "active_count": active_loads.count(),
-            "awaiting_start_count": awaiting_start.count(),
-            "in_transit_count": in_transit.count(),
-            # Tables
-            "awaiting_start_loads": awaiting_start[:10],
-            "in_transit_loads": in_transit[:10],
-        }
-
-    return render(request, "dashboard/dashboard.html", context)
-
-
-def _validate_stops_formset(stop_formset):
-    """
-    V1 sanity checks *before saving*:
-    - at least 2 non-deleted stops
-    - at least one pickup and one delivery
-    """
-    errors = []
-    valid_forms = []
-    for f in stop_formset.forms:
-        if not hasattr(f, "cleaned_data"):
-            continue  # skip invalid forms
-        cd = f.cleaned_data
-        if not cd:
-            continue
-        if cd.get("DELETE"):
-            continue  # skip deleted forms
-        # ignore completely empty extra forms
-        if (
-            not cd.get("facility")
-            and not cd.get("stop_type")
-            and not cd.get("sequence")
-        ):
-            continue
-        valid_forms.append(cd)
-
-    if len(valid_forms) < 2:
-        errors.append("At least 2 stops (Pickup and Delivery) are required.")
-
-    has_pickup = any(
-        cd.get("stop_type") == LoadStop.StopType.PICKUP for cd in valid_forms
-    )
-    has_delivery = any(
-        cd.get("stop_type") == LoadStop.StopType.DELIVERY for cd in valid_forms
-    )
-
-    if not has_pickup:
-        errors.append("At least one PICKUP stop is required.")
-    if not has_delivery:
-        errors.append("At least one DELIVERY stop is required.")
-
-    return errors
+    return render(request, "dashboard/dashboard.html", context={})
 
 
 @login_required
@@ -176,7 +199,7 @@ def create_load(request):
     - Later, once RC exists, stops will be locked (read-only).
     """
 
-    if request.user.role != "dispatcher":
+    if not is_dispatcher(request.user):
         messages.error(request, "Only dispatchers can create loads.")
         return redirect("dashboard")
 
@@ -225,8 +248,6 @@ def load_stop_row(request):
     HTMX: returns ONE new stop row for the formset.
     Also updates stops-TOTAL_FORMS using hx-swap-oob.
     """
-    if request.user.role != "dispatcher":
-        return HttpResponse("", status=403)
 
     index = int(request.GET.get("index", 0))
 
@@ -261,11 +282,49 @@ def load_detail(request, load_id):
     - Stop editing only happens during load creation.
 
     """
+
+    # select_related() => for FK
+    # prefetch_related() => for reverse relations
+    # make sure templates does not do DB hits
+    # list() => as django qs is lazy
+
+    # Prefetch verything related to avoid N+1
+    stops_qs = LoadStop.objects.select_related("facility").order_by("sequence")
+    documents_qs = LoadDocument.objects.order_by("-created_at")
+    reschedule_qs = RescheduleRequest.objects.select_related(
+        "created_by", "stop", "stop__facility"
+    ).order_by("-created_at")
+    notes_qs = LoadNote.objects.select_related("author").order_by("-created_at")
+    accessorials_qs = Accessorial.objects.order_by("-created_at")
+
+    load_qs = Load.objects.select_related(
+        "broker", "carrier", "truck", "driver", "dispatcher", "tracking_agent"
+    ).prefetch_related(
+        Prefetch("stops", queryset=stops_qs),
+        Prefetch("documents", queryset=documents_qs),
+        Prefetch("reschedule_requests", queryset=reschedule_qs),
+        Prefetch("notes", queryset=notes_qs),
+        Prefetch("accessorials", queryset=accessorials_qs),
+        "tracking_updates",
+    )
+
     # Get load or 404 if not found
     # WHY get_object_or_404: Better UX than generic 500 error
     load = get_object_or_404(Load, load_id=load_id)
 
+    # LOCK
+    lock_result = load_locks.acquire_lock(load=load, user=request.user)
+    lock = lock_result.lock
+    is_locked_by_other = lock_result.locked_by_other
+
     if request.method == "POST":
+        if lock and is_locked_by_other:
+            messages.error(
+                request,
+                f"Load is currently being edited by {lock.locked_by.get_full_name() or lock.locked_by.username}. Please try again later.",
+            )
+            return redirect("load_detail", load_id=load.load_id)
+
         # Update existing load with form data
         # WHY instance=load: Pre-populates form with current values
         # WHY user=request.user: Form needs user for permission checks
@@ -274,8 +333,10 @@ def load_detail(request, load_id):
         if form.is_valid():
             form.save()
             messages.success(request, "Load updated successfully.")
-            # Redirect back to same page (PRG pattern)
-            return redirect("load_detail", load_id=load.load_id)
+            load_locks.release_lock(
+                load=load, user=request.user, allow_override=False
+            )  # Only release if it's currently locked by this user
+            return redirect("dashboard")
     else:
         # GET request: Show form pre-filled with current load data
         form = LoadForm(instance=load, user=request.user)
@@ -285,18 +346,47 @@ def load_detail(request, load_id):
 
     # Get list of tracking agents for handover dropdown
     # WHY: Dispatcher selects who to handover load to
-    tracking_agents = User.objects.filter(role="tracking_agent", is_active=True)
+    # agents = User.objects.filter(groups__name="Dispatcher")
+    agents = User.objects.filter(groups__name__in=["Dispatcher", "Tracker"]).distinct()
 
     # Get available actions for current user
     # WHY: Template uses this to show/hide action buttons
     available_actions = get_available_actions(request.user, load)
 
-    # Related activity lists for sidebar/history panels
-    tracking_updates = load.tracking_updates.all()
-    reschedule_requests = load.reschedule_requests.all()
+    # Use prefetched objects (no template ORM calls)
+    stops = list(load.stops.all())  # already ordered via prefetch
+    documents = list(load.documents.all())
+    has_documents = bool(documents)
+    reschedule_requests = list(load.reschedule_requests.all())
+    notes = list(load.notes.all())
+    note_form = LoadNoteForm()
+    accessorials = list(load.accessorials.all())
+    tracking_updates = list(load.tracking_updates.all())
+    # enforce newest-first in Python (prefetch doesn't guarantee ordering unless qs provided)
+    tracking_updates.sort(key=lambda x: x.created_at, reverse=True)
 
-    # For read-only display
-    stops = load.stops.order_by("sequence")
+    # ETA: current = latest tracking update new_eta else planned_eta
+    latest_eta_update = next((tu for tu in tracking_updates if tu.new_eta), None)
+    current_eta = latest_eta_update.new_eta if latest_eta_update else load.planned_eta
+    planned_eta = load.planned_eta
+    is_late = bool(current_eta and planned_eta and current_eta > planned_eta)
+
+    # Related activity lists for sidebar/history panels
+    # tracking_updates = load.tracking_updates.all()
+    # reschedule_requests = load.reschedule_requests.all()
+
+    # notes
+    # notes = load.notes.select_related("author").all()
+    # note_form = LoadNoteForm()
+
+    # # ETA
+    # latest_eta_update = (
+    #     load.tracking_updates.filter(new_eta__isnull=False)
+    #     .order_by("-created_at")
+    #     .first()
+    # )
+    # current_eta = latest_eta_update.new_eta if latest_eta_update else load.planned_eta
+    # planned_eta = load.planned_eta
 
     return render(
         request,
@@ -305,16 +395,90 @@ def load_detail(request, load_id):
             "load": load,
             "form": form,
             "doc_form": doc_form,
-            "stops": stops,
-            "tracking_agents": tracking_agents,
+            "agents": agents,
             "available_actions": available_actions,
+            # explicitly passed lists (fast, no ORM in templates)
+            "stops": stops,
+            "documents": documents,
+            "has_documents": has_documents,
             "tracking_updates": tracking_updates,
             "reschedule_requests": reschedule_requests,
+            "accessorials": accessorials,
+            "notes": notes,
+            "note_form": note_form,
+            # lock context (unchanged)
+            "lock": lock,
+            "is_locked_by_other": is_locked_by_other,
+            "can_take_over": load_locks.can_take_over(user=request.user),
+            # ETA
+            "current_eta": current_eta,
+            "planned_eta": planned_eta,
+            "is_late": is_late,
         },
     )
 
 
 @login_required
+def load_lock_ping(request, load_id):
+    load = get_object_or_404(Load, load_id=load_id)
+    load_locks.refresh_lock(load=load, user=request.user)
+    return HttpResponse(status=204)  # No content, just a ping to refresh the lock
+
+
+@login_required
+@require_POST
+def load_lock_takeover(request, load_id):
+    load = get_object_or_404(Load, load_id=load_id)
+    result = load_locks.take_over_lock(load=load, user=request.user)
+    if result.acquired:
+        messages.success(request, "You  can now edit this load.")
+    else:
+        messages.error(request, "Unable to take over lock. ")
+
+    return redirect("load_detail", load_id=load.load_id)
+
+
+@login_required
+@require_POST
+def load_lock_release(request, load_id):
+    load = get_object_or_404(Load, load_id=load_id)
+    load_locks.release_lock(
+        load=load, user=request.user, allow_override=False
+    )  # Only release if it's currently locked by this user
+    if request.headers.get("HX-Request") == "true":
+        return HttpResponse(status=204)  # No content, just a ping to release the lock
+
+    next_url = request.POST.get("next") or request.GET.get("next")
+    if next_url and url_has_allowed_host_and_scheme(
+        next_url, allowed_hosts={request.get_host()}
+    ):
+        return redirect(next_url)
+
+    return redirect("loads_list")
+
+
+@login_required
+@require_load_lock
+def create_load_note(request, load_id):
+    if request.method == "POST":
+        load = get_object_or_404(Load, load_id=load_id)
+        form = LoadNoteForm(request.POST)
+        if form.is_valid():
+            note = form.save(commit=False)
+            note.load = load
+            note.author = request.user
+            note.save()
+            messages.success(request, "Note added.")
+        else:
+            messages.error(request, "Failed to add note. Please try again.")
+
+        return redirect("load_detail", load_id=load_id)
+    else:
+        return redirect("load_detail", load_id=load_id)
+
+
+@login_required
+@require_load_lock
 def upload_document(request, load_id):
     """
     Upload document to load (any user, any status).
@@ -452,12 +616,16 @@ def load_carrier_assets(request):
     carrier_id = request.GET.get("carrier")
 
     drivers = (
-        Driver.objects.filter(carrier_id=carrier_id)
+        Driver.objects.filter(
+            carrier_id=carrier_id, current_status=Driver.DriverStatus.AVAILABLE
+        )
         if carrier_id
         else Driver.objects.none()
     )
     trucks = (
-        Truck.objects.filter(carrier_id=carrier_id)
+        Truck.objects.filter(
+            carrier_id=carrier_id, current_status=Truck.TruckStatus.AVAILABLE
+        )
         if carrier_id
         else Truck.objects.none()
     )
@@ -475,12 +643,167 @@ def load_carrier_assets(request):
 @login_required
 def loads_list(request):
     """List all loads"""
-    loads = Load.objects.select_related(
-        "broker", "carrier", "truck", "driver"
-    ).order_by("-created_at")
-    context = {"loads": loads}
-    # TODO: create loads_list.html
+    query = request.GET.get("q", "").strip()
+    status = request.GET.get("status", "").strip()
+    from_date = request.GET.get("from_date", "").strip()
+    to_date = request.GET.get("to_date", "").strip()
+
+    now = timezone.now()
+
+    loads = (
+        Load.objects.select_related(
+            "broker", "carrier", "truck", "driver", "lock", "lock__locked_by"
+        )
+        .annotate(
+            # True only if lock exists AND not expired
+            is_locked=Q(lock__isnull=False) & Q(lock__expires_at__gt=now),
+            locked_by_name=F("lock__locked_by__username"),
+        )
+        .order_by("-created_at")
+    )
+
+    if query:
+        loads = loads.filter(load_id__icontains=query)
+    if status:
+        loads = loads.filter(status=status)
+    if from_date:
+        loads = loads.filter(created_at__date__gte=from_date)
+    if to_date:
+        loads = loads.filter(created_at__date__lte=to_date)
+
+    # accounts should only see delivered loads (for billing purposes)
+    if is_accounts(request.user):
+        loads = loads.filter(status=Load.Status.DELIVERED)
+
+    context = {
+        "loads": loads,
+        "query": query,
+        "status": status,
+        "from_date": from_date,
+        "to_date": to_date,
+    }
+
     return render(request, "tms/loads_list.html", context)
+
+
+def _build_my_loads_queryset(request):
+    """Single source of truth: same queryset used by UI + export."""
+    query = request.GET.get("q", "").strip()
+    status = request.GET.get("status", "").strip()
+    from_date = request.GET.get("from_date", "").strip()
+    to_date = request.GET.get("to_date", "").strip()
+
+    ZERO_MONEY = Value(0, output_field=DecimalField(max_digits=12, decimal_places=2))
+
+    first_pickup_departed_sq = (
+        LoadStop.objects.filter(load=OuterRef("pk"), stop_type=LoadStop.StopType.PICKUP)
+        .order_by("sequence")
+        .values("departed_at")[:1]
+    )
+
+    qs = (
+        Load.objects.filter(dispatcher=request.user)
+        .select_related("broker", "carrier", "truck", "driver")
+        .annotate(
+            accessorial_total=Coalesce(Sum("accessorials__amount"), ZERO_MONEY),
+            total_cost=ExpressionWrapper(
+                Coalesce(F("rate"), ZERO_MONEY)
+                + Coalesce(Sum("accessorials__amount"), ZERO_MONEY),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            ),
+            pickup_actual=Subquery(first_pickup_departed_sq),
+            delivery_actual=F("delivered_at"),
+        )
+        .order_by("-created_at")
+    )
+
+    if query:
+        qs = qs.filter(load_id__icontains=query)
+    if status:
+        qs = qs.filter(status=status)
+    if from_date:
+        qs = qs.filter(created_at__date__gte=from_date)
+    if to_date:
+        qs = qs.filter(created_at__date__lte=to_date)
+
+    return qs
+
+
+@login_required
+def my_loads(request):
+    """Dispatcher-only list of loads assigned to the current dispatcher."""
+    if not is_dispatcher(request.user):
+        return HttpResponse(status=403)
+
+    loads = _build_my_loads_queryset(request)
+
+    context = {
+        "loads": loads,
+        "query": request.GET.get("q", "").strip(),
+        "status": request.GET.get("status", "").strip(),
+        "from_date": request.GET.get("from_date", "").strip(),
+        "to_date": request.GET.get("to_date", "").strip(),
+    }
+    return render(request, "tms/my_loads.html", context)
+
+
+def my_loads_export_excel(request):
+    if not is_dispatcher(request.user):
+        return HttpResponse(status=403)
+
+    loads = _build_my_loads_queryset(request)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "My Loads"
+
+    headers = [
+        "Load ID",
+        "Broker",
+        "Truck No",
+        "Pickup Actual",
+        "Delivery Actual",
+        "Miles",
+        "Deadhead Miles",
+        "Rate",
+        "Extra Charges",
+        "RPM",
+        "Status",
+    ]
+
+    ws.append(headers)
+    for load in loads:
+        ws.append(
+            [
+                load.load_id,
+                getattr(load.broker, "name", "") if load.broker_id else "",
+                getattr(load.truck, "truck_number", "") if load.truck_id else "",
+                load.pickup_actual.replace(tzinfo=None) if load.pickup_actual else None,
+                load.delivery_actual.replace(tzinfo=None)
+                if load.delivery_actual
+                else None,
+                load.miles or "",
+                load.deadhead_miles or "",
+                float(load.rate) if load.rate is not None else 0.0,
+                float(load.accessorial_total)
+                if load.accessorial_total is not None
+                else 0.0,
+                float(load.rpm) if load.rpm is not None else None,
+                load.status,
+            ]
+        )
+
+    # Write to response
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    resp = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp["Content-Disposition"] = 'attachment; filename="my_loads.xlsx"'
+    return resp
 
 
 @login_required
@@ -488,7 +811,7 @@ def carriers_list(request):
     """List all carriers"""
     carriers = Carrier.objects.prefetch_related("trucks", "drivers").order_by("name")
     context = {"carriers": carriers}
-    # TODO: create loads_list.html
+
     return render(request, "tms/carriers_list.html", context)
 
 
@@ -499,7 +822,7 @@ def drivers_list(request):
         "last_name", "first_name"
     )
     context = {"drivers": drivers}
-    # TODO: create loads_list.html
+
     return render(request, "tms/drivers_list.html", context)
 
 
@@ -521,13 +844,10 @@ def active_loads(request):
 
 
 @login_required
+@require_load_lock
 def create_tracking_update(request, load_id):
     """Create a tracking update for a load (tracking agents only)."""
     load = get_object_or_404(Load, load_id=load_id)
-
-    if request.user.role != "tracking_agent":
-        messages.error(request, "Only tracking agents can add tracking updates.")
-        return redirect("load_detail", load_id=load.load_id)
 
     if request.method == "POST":
         form = TrackingUpdateForm(request.POST)
@@ -538,7 +858,7 @@ def create_tracking_update(request, load_id):
             # If not delayed, clear delay_reason and new_eta
             if not tu.is_delayed:
                 tu.delay_reason = ""
-                tu.new_eta = None
+                # tu.new_eta = None
             tu.save()
             messages.success(request, "Tracking update added.")
             return redirect("load_detail", load_id=load.load_id)
@@ -553,6 +873,7 @@ def create_tracking_update(request, load_id):
 
 
 @login_required
+@require_load_lock
 def create_reschedule_request(request, load_id):
     """
     Create a new reschedule request for a specific stop on a load.
@@ -562,9 +883,9 @@ def create_reschedule_request(request, load_id):
     """
     load = get_object_or_404(Load, load_id=load_id)
 
-    if request.user.role not in ["tracking_agent", "dispatcher"]:
-        messages.error(request, "Not authorized to create reschedule requests.")
-        return redirect("load_detail", load_id=load.load_id)
+    # if not has_any_role(request.user, "Dispatcher", "Tracker"):
+    #     messages.error(request, "Not authorized to create reschedule requests.")
+    #     return redirect("load_detail", load_id=load.load_id)
 
     if request.method == "POST":
         # Create instance with load and user pre-set for validation
@@ -595,6 +916,7 @@ def create_reschedule_request(request, load_id):
 
 
 @login_required
+@require_load_lock
 def edit_reschedule_approvals(request, load_id, request_id):
     """
     Edit an existing reschedule request.
@@ -605,7 +927,7 @@ def edit_reschedule_approvals(request, load_id, request_id):
     load = get_object_or_404(Load, load_id=load_id)
     rr = get_object_or_404(RescheduleRequest, id=request_id, load=load)
 
-    if request.user.role not in ["dispatcher", "tracking_agent"]:
+    if not has_any_role(request.user, "Dispatcher", "Tracker"):
         messages.error(request, "Not authorized to update reschedule requests.")
         return redirect("load_detail", load_id=load.load_id)
 
@@ -653,6 +975,7 @@ def edit_reschedule_approvals(request, load_id, request_id):
 
 
 @login_required
+@require_load_lock
 def create_accessorial(request, load_id):
     """
     Create accessorial charge for a load.
@@ -661,7 +984,7 @@ def create_accessorial(request, load_id):
     load = get_object_or_404(Load, load_id=load_id)
 
     # Check permissions
-    if request.user.role not in ["dispatcher", "tracking_agent"]:
+    if not has_any_role(request.user, "Dispatcher", "Tracker"):
         messages.error(request, "Not authorized to add charges.")
         return redirect("load_detail", load_id=load.load_id)
 
@@ -691,12 +1014,13 @@ def create_accessorial(request, load_id):
 
 
 @login_required
+@require_load_lock
 def edit_accessorial(request, load_id, pk):
     load = get_object_or_404(Load, load_id=load_id)
     accessorial = get_object_or_404(Accessorial, pk=pk, load=load)
 
     # Check permissions
-    if request.user.role not in ["dispatcher", "tracking_agent"]:
+    if not has_any_role(request.user, "Dispatcher", "Tracker"):
         messages.error(request, "Not authorized to edit charges.")
         return redirect("load_detail", load_id=load.load_id)
     if request.method == "POST":
@@ -742,12 +1066,9 @@ def accessorial_charge_type_fields(request):
 
 
 @login_required
+@require_load_lock
 def create_duty_log_view(request, load_id):
     load = get_object_or_404(Load, load_id=load_id)
-
-    if request.user.role != "tracking_agent":
-        messages.error(request, "Only tracking agents can add duty logs.")
-        return redirect("load_detail", load_id=load.load_id)
 
     driver = load.driver
     if not driver:
@@ -812,97 +1133,67 @@ def driver_hos_summary(request, driver_id):
     )
 
 
-# ============================================================================
-# STOP TRACKING ACTIONS (V1)
-# ============================================================================
-
-
 @login_required
 def stop_edit(request, stop_id):
-    """
-    Edit a LoadStop - check in, complete, or skip.
-    GET: Show form pre-filled with current stop data
-    POST: Save changes and redirect back to load_detail
-    """
     stop = get_object_or_404(LoadStop, id=stop_id)
     load = stop.load
 
-    # Simple permission check
-    if request.user.role != "tracking_agent":
-        return redirect("dashboard")
-
-    if load.status not in [Load.Status.DISPATCHED, Load.Status.IN_TRANSIT]:
-        messages.error(request, "Load not in transit")
+    if load.status not in {
+        Load.Status.DISPATCHED,
+        Load.Status.IN_TRANSIT,
+    }:
+        messages.error(request, "Load not in transit.")
         return redirect("load_detail", load_id=load.load_id)
 
     if request.method == "POST":
-        action = request.POST.get("action")  # check_in, complete, or skip
+        form = StopEditForm(request.POST, stop=stop)
 
-        if action == "check_in":
-            arrival_time_str = request.POST.get("arrival_time")
-            if arrival_time_str:
-                from django.utils.dateparse import parse_datetime
+        if form.is_valid():
+            arrival = form.cleaned_data.get("arrival_time")
+            departure = form.cleaned_data.get("departure_time")
 
-                arrival_time = parse_datetime(arrival_time_str)
-                if arrival_time:
-                    stop.check_in(arrival_time=arrival_time)
-                    messages.success(
-                        request,
-                        f"Checked in at {stop.facility.name}",
-                    )
-                else:
-                    messages.error(request, "Invalid arrival time format")
-            else:
-                stop.check_in()
-                messages.success(request, f"Checked in at {stop.facility.name}")
+            if arrival:
+                stop.arrived_at = arrival
 
-        elif action == "complete":
-            departure_time_str = request.POST.get("departure_time")
-            if departure_time_str:
-                from django.utils.dateparse import parse_datetime
+            if departure:
+                stop.departed_at = departure
+                stop.status = LoadStop.StopStatus.COMPLETED
 
-                departure_time = parse_datetime(departure_time_str)
-                if departure_time:
-                    stop.mark_completed(departure_time=departure_time)
-                    messages.success(
-                        request,
-                        f"Completed stop at {stop.facility.name}",
-                    )
-                else:
-                    messages.error(request, "Invalid departure time format")
-            else:
-                stop.mark_completed()
-                messages.success(request, f"Completed stop at {stop.facility.name}")
+            stop.save(
+                update_fields=["arrived_at", "departed_at", "status", "updated_at"]
+            )
+            messages.success(request, "Stop updated successfully.")
+            return redirect("load_detail", load_id=load.load_id)
 
-        elif action == "skip":
-            stop.mark_skipped()
-            messages.success(request, f"Skipped stop at {stop.facility.name}")
+    else:
+        form = StopEditForm(
+            initial={
+                "arrival_time": stop.arrived_at,
+                "departure_time": stop.departed_at,
+            },
+            stop=stop,
+        )
 
-        return redirect("load_detail", load_id=load.load_id)
-
-    # GET: Show form
-    from django.utils import timezone
-
-    context = {
-        "stop": stop,
-        "load": load,
-        "current_time": timezone.now().strftime("%Y-%m-%dT%H:%M"),
-    }
-    return render(request, "tms/stop_form.html", context)
+    return render(
+        request,
+        "tms/stop_form.html",
+        {
+            "form": form,
+            "stop": stop,
+            "load": load,
+        },
+    )
 
 
 # HTMX endpoints
 def search_brokers(request):
     """Search brokers by name"""
     query = request.GET.get("q", "").strip()
-    print(f"Search query: {query}")
 
     if not query:
         brokers = Broker.objects.none()
     else:
         brokers = Broker.objects.filter(name__icontains=query).only("id", "name")[:20]
-
-    print(brokers)
 
     return render(request, "tms/partials/_broker_options.html", {"brokers": brokers})
 

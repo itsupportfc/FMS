@@ -2,7 +2,7 @@
      class="flex flex-col h-full transition-all duration-300 ease-in-out bg-gray-900 text-white">
 
     <!-- Header -->
-    <div class="h-16 flex items-center justify-between px-4 bg-gray-900 border-b border-gray-800">
+    <div class="h-16 flex items-center justify-between px-4 py-4 bg-gray-900 ">
         <h2 class="text-xl font-bold text-white tracking-tight whitespace-nowrap sidebar-label">DISPATCH</h2>
         <button id="sidebarToggle"
                 type="button"
@@ -24,9 +24,9 @@
     <nav class="flex-1 px-3 py-4 space-y-1 bg-gray-900 overflow-y-auto">
         {% for item in sidebar_items %}
             {% url item.url as item_url %}
-            <a href="{% url item.url %}"
+            <a href="{{ item_url }}"
                class="block px-4 py-3 rounded-lg border text-[15px] transition-colors
-                      {% if forloop.first %}
+                      {% if request.path == item_url %}
                           bg-green-700 border-green-700 text-white font-semibold
                       {% else %}
                           border-gray-800 text-gray-200 hover:bg-gray-800 hover:text-white
@@ -34,6 +34,7 @@
                 <span class="sidebar-label">{{ item.label }}</span>
             </a>
         {% endfor %}
+
     </nav>
 
     <!-- Footer -->

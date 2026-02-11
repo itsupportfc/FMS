@@ -1,7 +1,7 @@
 from django.db import transaction
 from django.utils import timezone
 
-from tms.models import Accessorial, Load, Truck
+from tms.models import Accessorial, Driver, Load, Truck
 from tms.services.exceptions import ServiceError
 
 
@@ -28,15 +28,10 @@ def cancel_load(load: Load, reason: str = "") -> None:
     load.cancelled_at = timezone.now()
     load.save(update_fields=["status", "cancelled_at", "updated_at"])
 
-    # Auto-create TONU (optional; keep commented if you want same behavior)
-    # Accessorial.objects.create(
-    #     load=load,
-    #     charge_type=Accessorial.ChargeType.TONU,
-    #     amount=0.00,
-    #     description=f"TONU charge - Load cancelled at {load.get_status_display()}",
-    #     created_by=load.dispatcher,
-    # )
 
     if load.truck:
         load.truck.current_status = Truck.TruckStatus.AVAILABLE
         load.truck.save(update_fields=["current_status"])
+        if load.driver:
+            load.driver.current_status = Driver.DriverStatus.AVAILABLE
+            load.driver.save(update_fields=["current_status"])

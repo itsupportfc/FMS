@@ -9,4 +9,19 @@ INSTALLED_APPS += [
     "django_stubs_ext",
 ]
 
-print("Running in Development Mode")
+MIDDLEWARE += [
+    "debug_toolbar.middleware.DebugToolbarMiddleware",
+]
+
+
+# TEMPORARY: Use R2 in development for testing
+# Change this back to False after testing
+USE_R2_IN_DEV = False
+
+if USE_R2_IN_DEV:
+    # Use Cloudflare R2 for testing
+    # Override STORAGES to use Cloudflare R2
+    STORAGES["default"] = {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    }
+

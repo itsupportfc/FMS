@@ -30,6 +30,12 @@
                 {{ form.tracking_method|add_class:"form-select" }}
             </div>
 
+            <div>
+                <label class="form-label">Updated ETA</label>
+                {{ form.new_eta|add_class:"form-input" }}
+                <p class="helper-text">Use local time for the destination.</p>
+            </div>
+
             <div class="flex items-center gap-2 text-sm text-gray-700">
                 {{ form.is_delayed }}
                 <span>Mark as delayed</span>
@@ -39,12 +45,6 @@
                 <div>
                     <label class="form-label">Delay Reason</label>
                     {{ form.delay_reason|add_class:"form-select" }}
-                </div>
-
-                <div>
-                    <label class="form-label">Proposed New ETA</label>
-                    {{ form.new_eta|add_class:"form-input" }}
-                    <p class="helper-text">Use local time for the destination.</p>
                 </div>
             </div>
 

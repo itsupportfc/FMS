@@ -6,21 +6,6 @@ from django.db import models
 class User(AbstractUser):
     """Custom user model extending Django's AbstractUser."""
 
-    # Django’s enum pattern for model fields.
-    class Role(models.TextChoices):
-        # actual value stored in the database, human-readable name
-        DISPATCHER = "dispatcher", "Dispatcher"
-        TRACKING_AGENT = "tracking_agent", "Tracking Agent"
-        ACCOUNTS = "accounts", "Accounts"
-        MANAGER = "manager", "Manager"
-        ADMIN = "admin", "Admin"
-
-    role = models.CharField(
-        choices=Role.choices,
-        default=Role.DISPATCHER,
-        max_length=20,
-        help_text="User role for permission management",
-    )
     email = models.EmailField(unique=True)
     phone_regex = RegexValidator(regex=r"^\+\d{10,15}$")
     phone = models.CharField(validators=[phone_regex], max_length=20, null=True)
@@ -32,4 +17,17 @@ class User(AbstractUser):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.get_full_name()} ({self.username})"
+        return self.username
+
+    def get_full_name(self):
+        full_name = f"{self.first_name} {self.last_name}".strip()
+        return full_name if full_name else self.username
+
+    def get_groups_display(self):
+        """
+        Return comma-separated list of group names.
+
+        Usage: user.get_groups_display() → "Dispatcher, Manager"
+        Useful for templates and admin display.
+        """
+        return ", ".join([g.name for g in self.groups.all()]) or "No roles"

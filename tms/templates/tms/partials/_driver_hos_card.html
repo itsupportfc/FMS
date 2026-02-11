@@ -2,8 +2,13 @@
     <div class="card">
         <div class="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
             <h3 class="card-header mb-0 pb-0 border-0">Driver HOS</h3>
-            <a href="{% url 'create_duty_log' load.load_id %}"
-               class="btn-secondary btn-sm">Add Duty Log</a>
+
+            {% if is_locked_by_other %}
+                <span class="text-xs text-gray-500">Read-only</span>
+            {% elif load.status != load.Status.COMPLETED %}
+                <a href="{% url 'create_duty_log' load.load_id %}"
+                   class="btn-secondary btn-sm">Add Duty Log</a>
+            {% endif %}
         </div>
 
         <div hx-get="{% url 'driver_hos_summary' load.driver.id %}"

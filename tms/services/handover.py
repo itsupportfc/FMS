@@ -1,7 +1,7 @@
 from django.db import transaction
 from django.utils import timezone
 
-from tms.models import Handover, Load
+from tms.models import Driver, Handover, Load, Truck
 from tms.services.exceptions import ServiceError
 
 
@@ -46,10 +46,13 @@ def handover_to_tracking(load: Load, tracking_agent, from_agent, instructions=""
         load.status = Load.Status.DISPATCHED
         load.tracking_agent = tracking_agent
         load.dispatched_at = timezone.now()
+        load.truck.current_status = Truck.TruckStatus.ASSIGNED
+        load.driver.current_status = Driver.DriverStatus.ASSIGNED
         load.save(
             update_fields=["status", "tracking_agent", "dispatched_at", "updated_at"]
         )
-
+        load.truck.save(update_fields=["current_status"])
+        load.driver.save(update_fields=["current_status"])
         # Create handover audit record
         Handover.objects.create(
             load=load,

@@ -1,27 +1,27 @@
 {% load form_filters %}
 
 <div class="card">
-    <h3 class="card-header">Documents</h3>
+    <div class="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
+        <h3 class="card-header mb-0 pb-0 border-0">Documents</h3>
+        {% if is_locked_by_other %}<span class="text-xs text-gray-500">Read-only</span>{% endif %}
+    </div>
 
-    {# Use exists() instead of count method reference #}
-    {% if load.documents.exists %}
+    {% if has_documents %}
         <div class="space-y-3 mb-6">
             <p class="helper-text">Uploaded</p>
 
-            {# Show all documents #}
-            {% for doc in load.documents.all %}
+            {% for doc in documents %}
                 <div class="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 hover:bg-gray-100 transition">
-                    <div class="flex-1">
-                        <p class="text-xs font-medium text-gray-900">{{ doc.get_document_type_display }}</p>
-                        <p class="text-xs text-gray-600 mt-0.5">{{ doc.original_filename }}</p>
-
-                        {% if doc.description %}<p class="text-xs text-gray-500 mt-1">{{ doc.description }}</p>{% endif %}
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-gray-900 truncate">{{ doc.get_document_type_display }}</p>
+                        <p class="text-xs text-gray-600 mt-0.5 truncate">{{ doc.original_filename }}</p>
+                        {% if doc.description %}<p class="text-xs text-gray-500 mt-1 truncate">{{ doc.description }}</p>{% endif %}
                     </div>
 
                     <a href="{{ doc.file.url }}"
                        target="_blank"
                        rel="noopener"
-                       class="btn-ghost btn-sm">Download</a>
+                       class="btn-ghost btn-sm flex-shrink-0">Download</a>
                 </div>
             {% endfor %}
         </div>
@@ -30,33 +30,35 @@
     {% endif %}
 
     <div class="border-t border-gray-200 pt-5">
-        <p class="text-md font-semibold text-gray-900 mb-3">Upload New Document</p>
+        {% if not is_locked_by_other %}
+            <p class="text-md font-semibold text-gray-900 mb-3">Upload New Document</p>
 
-        <form method="post"
-              action="{% url 'upload_document' load.load_id %}"
-              enctype="multipart/form-data"
-              class="space-y-4">
-            {% csrf_token %}
+            <form method="post"
+                  action="{% url 'upload_document' load.load_id %}"
+                  enctype="multipart/form-data"
+                  class="space-y-4">
+                {% csrf_token %}
 
-            <div>
-                <label class="form-label">Document Type</label>
-                {{ doc_form.document_type|add_class:"form-select" }}
-                {% if doc_form.document_type.errors %}<p class="form-error">{{ doc_form.document_type.errors.0 }}</p>{% endif %}
-            </div>
+                <div>
+                    <label class="form-label">Document Type</label>
+                    {{ doc_form.document_type|add_class:"form-select" }}
+                    {% if doc_form.document_type.errors %}<p class="form-error">{{ doc_form.document_type.errors.0 }}</p>{% endif %}
+                </div>
 
-            <div>
-                <label class="form-label">File</label>
-                {{ doc_form.file|add_class:"form-input" }}
-                {% if doc_form.file.errors %}<p class="form-error">{{ doc_form.file.errors.0 }}</p>{% endif %}
-            </div>
+                <div>
+                    <label class="form-label">File</label>
+                    {{ doc_form.file|add_class:"form-input" }}
+                    {% if doc_form.file.errors %}<p class="form-error">{{ doc_form.file.errors.0 }}</p>{% endif %}
+                </div>
 
-            <div>
-                <label class="form-label">Description</label>
-                {{ doc_form.description|add_class:"form-input" }}
-                {% if doc_form.description.errors %}<p class="form-error">{{ doc_form.description.errors.0 }}</p>{% endif %}
-            </div>
+                <div>
+                    <label class="form-label">Description</label>
+                    {{ doc_form.description|add_class:"form-input" }}
+                    {% if doc_form.description.errors %}<p class="form-error">{{ doc_form.description.errors.0 }}</p>{% endif %}
+                </div>
 
-            <button type="submit" class="btn-secondary w-full">Upload Document</button>
-        </form>
+                <button type="submit" class="btn-secondary w-full">Upload Document</button>
+            </form>
+        {% endif %}
     </div>
 </div>
