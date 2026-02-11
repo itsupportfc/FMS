@@ -1,5 +1,3 @@
-from turtle import up
-
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
@@ -39,6 +37,6 @@ def create_duty_log(*, log: DutyLog):
 
     # Save the new log
     log.full_clean()
-    log.save() 
+    log.save()
 
     return log
