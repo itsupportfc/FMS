@@ -20,18 +20,14 @@
                         </form>
                     {% endif %}
                 </div>
-                {% comment %} <div class="text-sm mt-2">Lock auto-expires at {{ lock.expires_at }}.</div> {% endcomment %}
             </div>
         {% else %}
-            <div class="alert-info mb-4">
-                You are editing this load. Lock expires in 60 seconds (auto-extends while open).
-            </div>
+            <div class="alert-info mb-4">You are editing this load. Lock expires in 60 seconds (auto-extends while open).</div>
+            <div hx-get="{% url 'load_lock_ping' load.load_id %}"
+                 hx-trigger="every 25s"
+                 hx-swap="none"></div>
         {% endif %}
     {% endif %}
-
-    <div hx-get="{% url 'load_lock_ping' load.load_id %}"
-         hx-trigger="every 25s"
-         hx-swap="none"></div>
 
     <div class="max-w-7xl mx-auto px-8 py-6">
         {% if messages %}

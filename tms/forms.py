@@ -1,11 +1,9 @@
 # forms.py
-from typing import Any, Optional, cast
+from typing import cast
 
 from django import forms
 from django.core.exceptions import ValidationError
-from django.db.models import QuerySet
 from django.forms import ModelChoiceField
-from django.utils import timezone
 
 from .models import (
     Accessorial,
@@ -47,20 +45,10 @@ class LoadForm(forms.ModelForm):
             "rate",
             "miles",
             "deadhead_miles",
-            # "commission_type",
-            # "dispatcher_commission",
-            # carrier
             "carrier",
             "driver",
             "truck",
             "planned_eta",
-            # Timestamps (for edit view - tracking agent fills these in)
-            # "dispatched_at",
-            # "delivered_at",
-            # "completed_at",
-            # "cancelled_at",
-            # Notes
-            # "remarks",
         ]
 
         # Widget customization: Convert datetime fields to HTML5 datetime-local
@@ -76,19 +64,6 @@ class LoadForm(forms.ModelForm):
             "planned_eta": forms.DateTimeInput(
                 attrs={"type": "datetime-local", "step": "60"}
             ),
-            # "dispatched_at": forms.DateTimeInput(
-            #     attrs={"type": "datetime-local", "step": "60"}
-            # ),
-            # "delivered_at": forms.DateTimeInput(
-            #     attrs={"type": "datetime-local", "step": "60"}
-            # ),
-            # "completed_at": forms.DateTimeInput(
-            #     attrs={"type": "datetime-local", "step": "60"}
-            # ),
-            # "cancelled_at": forms.DateTimeInput(
-            #     attrs={"type": "datetime-local", "step": "60"}
-            # ),
-            # "remarks": forms.Textarea(attrs={"rows": 4}),  # Multi-line text
         }
 
     def __init__(self, *args, **kwargs):
@@ -178,22 +153,15 @@ class LoadForm(forms.ModelForm):
                     self.fields[f].widget.attrs.update({"class": disabled_classes})
 
 
-
 class LoadStopForm(forms.ModelForm):
     class Meta:
         model = LoadStop
         fields = [
             "stop_type",
             "facility",
-            # "sequence",
             "appointment_type",
             "appt_start",
             "appt_end",
-            # "status",
-            # "arrived_at",
-            # "departed_at",
-            # "reference_number",
-            # "pieces",
             "weight",
             "notes",
         ]
@@ -205,12 +173,6 @@ class LoadStopForm(forms.ModelForm):
             "appt_end": forms.DateTimeInput(
                 attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
             ),
-            # "arrived_at": forms.DateTimeInput(
-            #     attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
-            # ),
-            # "departed_at": forms.DateTimeInput(
-            #     attrs={"type": "datetime-local", "step": "60"}, format="%Y-%m-%dT%H:%M"
-            # ),
             "notes": forms.Textarea(attrs={"rows": 2}),
         }
 

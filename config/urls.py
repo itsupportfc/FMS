@@ -14,6 +14,9 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
+    # Add debug toolbar URLs in development
+    if "debug_toolbar" in settings.INSTALLED_APPS:
+        urlpatterns += [path("__debug__/", include("debug_toolbar.urls"))]
 
 # admin customisation
 admin.site.site_header = "Truck Management System"

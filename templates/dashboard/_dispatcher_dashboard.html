@@ -37,7 +37,7 @@
                 <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                     <h2 class="text-lg font-semibold text-gray-900">
                         RC Missing
-                        <span class="ml-2 badge-red">{{ rc_missing_loads|length }}</span>
+                        <span class="ml-2 badge-red">{{ rc_missing_count }}</span>
                     </h2>
                 </div>
                 <div class="px-4 pb-4 pt-3">
@@ -53,7 +53,7 @@
                 <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                     <h2 class="text-lg font-semibold text-gray-900">
                         Delayed
-                        <span class="ml-2 badge-amber">{{ delayed_loads|length }}</span>
+                        <span class="ml-2 badge-amber">{{ delayed_count }}</span>
                     </h2>
                 </div>
                 <div class="px-4 pb-4 pt-3">
@@ -69,7 +69,7 @@
                 <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                     <h2 class="text-lg font-semibold text-gray-900">
                         In Transit
-                        <span class="ml-2 badge-blue">{{ in_transit_loads|length }}</span>
+                        <span class="ml-2 badge-blue">{{ in_transit_count }}</span>
                     </h2>
                 </div>
                 <div class="px-4 pb-4 pt-3">
@@ -85,7 +85,7 @@
                 <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                     <h2 class="text-lg font-semibold text-gray-900">
                         Pickup Today ({{ today }})
-                        <span class="ml-2 badge-gray">{{ pickup_today_loads|length }}</span>
+                        <span class="ml-2 badge-gray">{{ pickup_today_count }}</span>
                     </h2>
                 </div>
                 <div class="px-4 pb-4 pt-3">
@@ -101,7 +101,7 @@
                 <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                     <h2 class="text-lg font-semibold text-gray-900">
                         Delivery Today ({{ today }})
-                        <span class="ml-2 badge-green">{{ delivery_today_loads|length }}</span>
+                        <span class="ml-2 badge-green">{{ delivery_today_count }}</span>
                     </h2>
                 </div>
                 <div class="px-4 pb-4 pt-3">

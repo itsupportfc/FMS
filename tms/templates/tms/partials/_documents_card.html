@@ -47,7 +47,7 @@
 
                 <div>
                     <label class="form-label">File</label>
-                    {{ doc_form.file|add_class:"form-input" }}
+                    {{ doc_form.file|add_class:"form-file" }}
                     {% if doc_form.file.errors %}<p class="form-error">{{ doc_form.file.errors.0 }}</p>{% endif %}
                 </div>
 

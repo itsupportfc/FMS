@@ -2,6 +2,7 @@ from django.db import transaction
 
 from tms.models import LoadStop
 from tms.services.exceptions import ServiceError
+from tms.services.route_snapshot import refresh_route_snapshot
 
 
 def _validate_stops_business_rules(stop_formset):
@@ -85,4 +86,6 @@ def create_load_with_stops(*, dispatcher, load_form, stop_formset):
         if hasattr(stop_formset, "save_m2m"):
             stop_formset.save_m2m()
 
+        # refresh the load snapshot fields based on the new stops
+        refresh_route_snapshot(load=load)
     return load

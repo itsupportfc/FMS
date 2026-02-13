@@ -1,13 +1,132 @@
 import os
+from operator import index
+from tabnanny import verbose
 from typing import TYPE_CHECKING
 
 from django.contrib.auth import get_user_model
+from django.contrib.postgres.indexes import GinIndex
 from django.core.exceptions import ValidationError
-from django.db import models, transaction
-from django.db.models import Manager
+from django.db import models
+from django.db.models import F, Manager, Prefetch, Q
 from django.utils import timezone
 
 User = get_user_model()
+
+
+# ============================================================================
+# CUSTOM QUERYSETS & MANAGERS
+# ============================================================================
+class LoadQuerySet(models.QuerySet):
+    """Industry pattern: keep query optimizations in one place."""
+
+    def for_list_display(self):
+        """
+        Optimized for loads_list view.
+        - select_related for FK labels
+        - only() to restrict columns (big win on wide tables)
+        - uses denormalized pickup/delivery fields (no stops prefetch)
+        """
+        return self.select_related("broker", "carrier", "truck", "driver").only(
+            "id",
+            "load_id",
+            "status",
+            "created_at",
+            # denormalized route snapshot fields
+            "origin_city",
+            "origin_state",
+            "origin_appt_start",
+            "origin_appt_end",
+            "destination_city",
+            "destination_state",
+            "destination_appt_start",
+            "destination_appt_end",
+            # related label fields
+            "broker__id",
+            "broker__name",
+            "carrier__id",
+            "carrier__name",
+            "truck__id",
+            "truck__truck_number",
+            "driver__id",
+            "driver__first_name",
+            "driver__last_name",
+        )
+
+    def for_detail_display(self):
+        """
+        Optimized for load_detail view.
+        Prefetch heavy relations ONLY on detail.
+        """
+        # to avoid circular edge cases
+        from tms.models import (
+            Accessorial,
+            LoadDocument,
+            LoadNote,
+            LoadStop,
+            RescheduleRequest,
+        )
+
+        stops_qs = LoadStop.objects.select_related("facility").order_by("sequence")
+        docs_qs = LoadDocument.objects.order_by("-created_at")
+        notes_qs = LoadNote.objects.select_related("author").order_by("-created_at")
+        accessorials_qs = Accessorial.objects.select_related("created_by").order_by(
+            "-created_at"
+        )
+        reschedule_qs = RescheduleRequest.objects.select_related(
+            "created_by", "stop", "stop__facility"
+        ).order_by("-created_at")
+
+        return self.select_related(
+            "broker",
+            "carrier",
+            "truck",
+            "driver",
+            "dispatcher",
+            "tracking_agent",
+            "lock",
+            "lock__locked_by",
+        ).prefetch_related(
+            Prefetch("stops", queryset=stops_qs),
+            Prefetch("documents", queryset=docs_qs),
+            Prefetch("notes", queryset=notes_qs),
+            Prefetch("accessorials", queryset=accessorials_qs),
+            Prefetch("reschedule_requests", queryset=reschedule_qs),
+            "tracking_updates",
+        )
+
+    def active(self):
+        return self.exclude(status__in=[Load.Status.COMPLETED, Load.Status.CANCELLED])
+
+    def for_dispatcher(self, user):
+        return self.filter(dispatcher=user)
+
+    def for_tracking_agent(self, user):
+        return self.filter(tracking_agent=user)
+
+    def with_lock_status(self):
+        """
+        Expensive join+annotation. Only use when UI needs it.
+        (You said V1 doesn't need it -> don't call this in list.)
+        """
+        now = timezone.now()
+        return self.select_related("lock", "lock__locked_by").annotate(
+            is_locked=Q(lock__isnull=False) & Q(lock__expires_at__gt=now),
+            locked_by_name=F("lock__locked_by__username"),
+        )
+
+
+class LoadManager(models.Manager):
+    def get_queryset(self):
+        return LoadQuerySet(self.model, using=self._db)
+
+    def for_list_display(self):
+        return self.get_queryset().for_list_display()
+
+    def for_detail_display(self):
+        return self.get_queryset().for_detail_display()
+
+    def active(self):
+        return self.get_queryset().active()
 
 
 def carrier_document_upload_path(instance, filename):
@@ -67,6 +186,15 @@ class Broker(BaseModel):
     def __str__(self):
         return self.name
 
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Broker"
+        verbose_name_plural = "Brokers"
+        indexes = [
+            models.Index(fields=["name"], name="broker_name_idx"),
+            models.Index(fields=["mc_number"], name="broker_mc_number_idx"),
+        ]
+
 
 class Facility(BaseModel):
     """Shipper or receiver location."""
@@ -102,6 +230,15 @@ class Facility(BaseModel):
 
     def __str__(self):
         return f"{self.name} ({self.city}, {self.state})"
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Facility"
+        verbose_name_plural = "Facilities"
+        indexes = [
+            models.Index(fields=["name", "city"], name="facility_name_city_idx"),
+            models.Index(fields=["facility_type"], name="facility_type_idx"),
+        ]
 
 
 class Carrier(BaseModel):
@@ -167,6 +304,17 @@ class Carrier(BaseModel):
 
     def __str__(self):
         return self.name
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Carrier"
+        verbose_name_plural = "Carriers"
+        indexes = [
+            GinIndex(
+                fields=["name"], name="carrier_name_gin_idx", opclasses=["gin_trgm_ops"]
+            ),
+            models.Index(fields=["mc_number"], name="carrier_mc_number_idx"),
+        ]
 
 
 class Truck(BaseModel):
@@ -240,6 +388,14 @@ class Truck(BaseModel):
     notes = models.TextField(blank=True)
 
     class Meta:
+        ordering = ["truck_number"]
+        verbose_name = "Truck"
+        verbose_name_plural = "Trucks"
+        indexes = [
+            models.Index(
+                fields=["carrier", "truck_number"], name="truck_number_carrier_idx"
+            )
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["carrier", "truck_number"], name="unique_truck_per_carrier"
@@ -304,6 +460,14 @@ class Driver(BaseModel):
 
     # Notes
     notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["last_name", "first_name"]
+        verbose_name = "Driver"
+        verbose_name_plural = "Drivers"
+        indexes = [
+            models.Index(fields=["carrier", "current_status"], name="driver_status_idx")
+        ]
 
     def __str__(self):
         return self.full_name
@@ -704,6 +868,8 @@ class Load(BaseModel):
     Check for completeness before handover to tracking.
     """
 
+    objects = LoadManager()
+
     if TYPE_CHECKING:
         stops: Manager["LoadStop"]
         documents: Manager["LoadDocument"]
@@ -831,6 +997,11 @@ class Load(BaseModel):
         indexes = [
             # Dispatcher dashboards / tracking wall
             models.Index(fields=["status"], name="load_status_idx"),
+            # Dispatcher list filters (status + newest first)
+            models.Index(
+                fields=["dispatcher", "status", "-created_at"],
+                name="load_disp_status_created_idx",
+            ),
             models.Index(fields=["dispatcher", "status"], name="load_disp_status_idx"),
             # Date filtering / aging / KPI windows
             models.Index(fields=["created_at"], name="load_created_idx"),
@@ -870,6 +1041,18 @@ class Load(BaseModel):
         ):
             raise ValidationError({"truck": "Truck is not available."})
 
+    # denormalized fields
+    origin_city = models.CharField(max_length=100, blank=True, null=True)
+    origin_state = models.CharField(max_length=2, blank=True, null=True)
+    origin_appt_start = models.DateTimeField(null=True, blank=True)
+    origin_appt_end = models.DateTimeField(null=True, blank=True)
+    destination_city = models.CharField(max_length=100, blank=True, null=True)
+    destination_state = models.CharField(max_length=2, blank=True, null=True)
+    destination_appt_start = models.DateTimeField(null=True, blank=True)
+    destination_appt_end = models.DateTimeField(null=True, blank=True)
+    last_tracking_at = models.DateTimeField(null=True, blank=True)
+    is_delayed = models.BooleanField(default=False)
+
     def save(self, *args, **kwargs):
         # Auto-calculate RPM
         if self.miles and self.rate and self.miles > 0:
@@ -896,17 +1079,15 @@ class Load(BaseModel):
 
     @property
     def origin(self):
-        first = self.first_pickup
-        if first:
-            return f"{first.facility.city}, {first.facility.state}"
-        return None
+        if self.origin_city and self.origin_state:
+            return f"{self.origin_city}, {self.origin_state}"
+        return "-"
 
     @property
     def destination(self):
-        last = self.last_delivery
-        if last:
-            return f"{last.facility.city}, {last.facility.state}"
-        return None
+        if self.destination_city and self.destination_state:
+            return f"{self.destination_city}, {self.destination_state}"
+        return "-"
 
     def get_route_summary(self):
         stops = self.stops.order_by("sequence")

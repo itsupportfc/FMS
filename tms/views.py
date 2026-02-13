@@ -1,8 +1,10 @@
+from datetime import datetime, time, timedelta
 from io import BytesIO
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from django.db.models import (
     BooleanField,
     Case,
@@ -24,6 +26,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from openpyxl import Workbook
@@ -41,6 +44,7 @@ from tms.services.exceptions import ServiceError
 from tms.services.handover import handover_to_tracking
 from tms.services.hos import HOSCalculator
 from tms.services.load_creation import create_load_with_stops
+from tms.services.route_snapshot import refresh_route_snapshot
 from tms.services.transit import start_transit
 from tms.utils.locks import require_load_lock
 
@@ -80,6 +84,7 @@ def dashboard(request):
 
     if is_dispatcher(user):
         today = timezone.localdate()
+        now = timezone.now()
 
         rc_exists_sq = LoadDocument.objects.filter(
             load=OuterRef("pk"), document_type=LoadDocument.DocumentType.RC
@@ -141,35 +146,37 @@ def dashboard(request):
             .order_by("-created_at")
         )
 
+        excluded_terminal_statuses = [
+            Load.Status.CANCELLED,
+            Load.Status.COMPLETED,
+            Load.Status.DELIVERED,
+        ]
+
         # 1) RC Missing: created, status=booked, but RC missing
         rc_missing_loads = base_qs.filter(status=Load.Status.BOOKED, has_rc=False)
 
         # 2) Delayed
         delayed_loads = base_qs.filter(is_late=True).exclude(
-            status__in=[
-                Load.Status.CANCELLED,
-                Load.Status.COMPLETED,
-                Load.Status.DELIVERED,
-            ]
+            status__in=excluded_terminal_statuses
         )
+
         # 3) In Transit
         in_transit_loads = base_qs.filter(status=Load.Status.IN_TRANSIT)
         # 4) Pickup Today (only loads that actually have a target pickup datetime)
         pickup_today_loads = base_qs.filter(pickup_target_dt__date=today).exclude(
-            status__in=[
-                Load.Status.CANCELLED,
-                Load.Status.COMPLETED,
-                Load.Status.DELIVERED,
-            ]
+            status__in=excluded_terminal_statuses
         )
         # 5) Delivery Today (planned_eta date = today)
         delivery_today_loads = base_qs.filter(delivery_target_dt__date=today).exclude(
-            status__in=[
-                Load.Status.CANCELLED,
-                Load.Status.COMPLETED,
-                Load.Status.DELIVERED,
-            ]
+            status__in=excluded_terminal_statuses
         )
+
+        # PERFORMANCE: COUNT ONCE
+        rc_missing_count = rc_missing_loads.count()
+        delayed_count = delayed_loads.count()
+        in_transit_count = in_transit_loads.count()
+        pickup_today_count = pickup_today_loads.count()
+        delivery_today_count = delivery_today_loads.count()
 
         context = {
             "rc_missing_loads": rc_missing_loads,
@@ -179,6 +186,12 @@ def dashboard(request):
             "delivery_today_loads": delivery_today_loads,
             "today": today,
             "dashboard_template": "dashboard/_dispatcher_dashboard.html",
+            # ADDED COUNTS
+            "rc_missing_count": rc_missing_count,
+            "delayed_count": delayed_count,
+            "in_transit_count": in_transit_count,
+            "pickup_today_count": pickup_today_count,
+            "delivery_today_count": delivery_today_count,
         }
         return render(request, "dashboard/dashboard.html", context)
 
@@ -288,29 +301,7 @@ def load_detail(request, load_id):
     # make sure templates does not do DB hits
     # list() => as django qs is lazy
 
-    # Prefetch verything related to avoid N+1
-    stops_qs = LoadStop.objects.select_related("facility").order_by("sequence")
-    documents_qs = LoadDocument.objects.order_by("-created_at")
-    reschedule_qs = RescheduleRequest.objects.select_related(
-        "created_by", "stop", "stop__facility"
-    ).order_by("-created_at")
-    notes_qs = LoadNote.objects.select_related("author").order_by("-created_at")
-    accessorials_qs = Accessorial.objects.order_by("-created_at")
-
-    load_qs = Load.objects.select_related(
-        "broker", "carrier", "truck", "driver", "dispatcher", "tracking_agent"
-    ).prefetch_related(
-        Prefetch("stops", queryset=stops_qs),
-        Prefetch("documents", queryset=documents_qs),
-        Prefetch("reschedule_requests", queryset=reschedule_qs),
-        Prefetch("notes", queryset=notes_qs),
-        Prefetch("accessorials", queryset=accessorials_qs),
-        "tracking_updates",
-    )
-
-    # Get load or 404 if not found
-    # WHY get_object_or_404: Better UX than generic 500 error
-    load = get_object_or_404(Load, load_id=load_id)
+    load = get_object_or_404(Load.objects.for_detail_display(), load_id=load_id)
 
     # LOCK
     lock_result = load_locks.acquire_lock(load=load, user=request.user)
@@ -363,7 +354,7 @@ def load_detail(request, load_id):
     accessorials = list(load.accessorials.all())
     tracking_updates = list(load.tracking_updates.all())
     # enforce newest-first in Python (prefetch doesn't guarantee ordering unless qs provided)
-    tracking_updates.sort(key=lambda x: x.created_at, reverse=True)
+    # tracking_updates.sort(key=lambda x: x.created_at, reverse=True)
 
     # ETA: current = latest tracking update new_eta else planned_eta
     latest_eta_update = next((tu for tu in tracking_updates if tu.new_eta), None)
@@ -642,41 +633,57 @@ def load_carrier_assets(request):
 
 @login_required
 def loads_list(request):
-    """List all loads"""
+    """
+    List all loads
+    - Convert date strings -> timezone-aware datetime range (index-friendly)
+    - Avoid __date filters (they prevent index usage on created_at)
+    """
     query = request.GET.get("q", "").strip()
     status = request.GET.get("status", "").strip()
-    from_date = request.GET.get("from_date", "").strip()
-    to_date = request.GET.get("to_date", "").strip()
+    from_date_str = request.GET.get("from_date", "").strip()
+    to_date_str = request.GET.get("to_date", "").strip()
 
-    now = timezone.now()
+    # Base queryset
+    qs = Load.objects.for_list_display()
 
-    loads = (
-        Load.objects.select_related(
-            "broker", "carrier", "truck", "driver", "lock", "lock__locked_by"
-        )
-        .annotate(
-            # True only if lock exists AND not expired
-            is_locked=Q(lock__isnull=False) & Q(lock__expires_at__gt=now),
-            locked_by_name=F("lock__locked_by__username"),
-        )
-        .order_by("-created_at")
-    )
-
+    # FILTERS
     if query:
-        loads = loads.filter(load_id__icontains=query)
-    if status:
-        loads = loads.filter(status=status)
+        qs = qs.filter(load_id__icontains=query)
+    if status and status in Load.Status.values:
+        qs = qs.filter(status=status)
+
+    tz = timezone.get_current_timezone()
+
+    # get Date object from date string like '2024-01-31'
+    from_date = parse_date(from_date_str) if from_date_str else None
+    to_date = parse_date(to_date_str) if to_date_str else None
+
+    #  Date object => to Datetime object => to timezone aware
     if from_date:
-        loads = loads.filter(created_at__date__gte=from_date)
+        start_dt = timezone.make_aware(datetime.combine(from_date, time.min), tz)
+        qs = qs.filter(created_at__gte=start_dt)
     if to_date:
-        loads = loads.filter(created_at__date__lte=to_date)
+        # Exclusive end boundary = start of next day (clean + avoids microsecond bugs)
+        end_dt = timezone.make_aware(
+            datetime.combine(to_date, time.min), tz
+        ) + timedelta(days=1)
+        qs = qs.filter(created_at__lt=end_dt)
 
     # accounts should only see delivered loads (for billing purposes)
     if is_accounts(request.user):
-        loads = loads.filter(status=Load.Status.DELIVERED)
+        qs = qs.filter(status=Load.Status.DELIVERED)
+
+    # Ordering should be LAST so DB does it once after filters
+    qs = qs.order_by("-created_at")
+
+    # FIX: pagination added
+    paginator = Paginator(qs, 50)  # 50 laods per page
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
 
     context = {
-        "loads": loads,
+        "page_obj": page_obj,
+        "loads": page_obj.object_list,  # the loads for the current page
         "query": query,
         "status": status,
         "from_date": from_date,
@@ -687,11 +694,16 @@ def loads_list(request):
 
 
 def _build_my_loads_queryset(request):
-    """Single source of truth: same queryset used by UI + export."""
+    """
+    Single source of truth: same queryset used by UI + export.
+    Key improvements:
+    - created_at filtering is timezone-aware and index-friendly (no __date)
+    - uses `.only()` to avoid fetching big columns you don't display
+    """
     query = request.GET.get("q", "").strip()
     status = request.GET.get("status", "").strip()
-    from_date = request.GET.get("from_date", "").strip()
-    to_date = request.GET.get("to_date", "").strip()
+    from_date_str = request.GET.get("from_date", "").strip()
+    to_date_str = request.GET.get("to_date", "").strip()
 
     ZERO_MONEY = Value(0, output_field=DecimalField(max_digits=12, decimal_places=2))
 
@@ -703,7 +715,24 @@ def _build_my_loads_queryset(request):
 
     qs = (
         Load.objects.filter(dispatcher=request.user)
-        .select_related("broker", "carrier", "truck", "driver")
+        .select_related("broker", "truck")
+        .only(
+            "id",
+            "load_id",
+            "status",
+            "created_at",
+            "rate",
+            "miles",
+            "deadhead_miles",
+            "rpm",
+            "delivered_at",
+            "broker_id",
+            "truck_id",
+            "broker__id",
+            "broker__name",
+            "truck__id",
+            "truck__truck_number",
+        )
         .annotate(
             accessorial_total=Coalesce(Sum("accessorials__amount"), ZERO_MONEY),
             total_cost=ExpressionWrapper(
@@ -721,10 +750,20 @@ def _build_my_loads_queryset(request):
         qs = qs.filter(load_id__icontains=query)
     if status:
         qs = qs.filter(status=status)
+
+    # timzone aware + index friendly
+    tz = timezone.get_current_timezone()
+    from_date = parse_date(from_date_str) if from_date_str else None
+    to_date = parse_date(to_date_str) if to_date_str else None
+
     if from_date:
-        qs = qs.filter(created_at__date__gte=from_date)
+        start_dt = timezone.make_aware(datetime.combine(from_date, time.min), tz)
+        qs = qs.filter(created_at__gte=start_dt)
     if to_date:
-        qs = qs.filter(created_at__date__lte=to_date)
+        end_dt = timezone.make_aware(
+            datetime.combine(to_date, time.min), tz
+        ) + timedelta(days=1)
+        qs = qs.filter(created_at__lt=end_dt)
 
     return qs
 
@@ -735,10 +774,16 @@ def my_loads(request):
     if not is_dispatcher(request.user):
         return HttpResponse(status=403)
 
-    loads = _build_my_loads_queryset(request)
+    qs = _build_my_loads_queryset(request)
+
+    # pagination
+    paginator = Paginator(qs, 50)
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
 
     context = {
-        "loads": loads,
+        "page_obj": page_obj,
+        "loads": page_obj.object_list,
         "query": request.GET.get("q", "").strip(),
         "status": request.GET.get("status", "").strip(),
         "from_date": request.GET.get("from_date", "").strip(),
@@ -772,7 +817,8 @@ def my_loads_export_excel(request):
     ]
 
     ws.append(headers)
-    for load in loads:
+    # use iterator : reduces memory use if many rows
+    for load in loads.iterator(chunk_size=2000):
         ws.append(
             [
                 load.load_id,
@@ -860,6 +906,11 @@ def create_tracking_update(request, load_id):
                 tu.delay_reason = ""
                 # tu.new_eta = None
             tu.save()
+
+            # set denormalized fields
+            load.last_tracking_at = tu.created_at
+            load.is_delayed = bool(tu.is_delayed)
+            load.save()
             messages.success(request, "Tracking update added.")
             return redirect("load_detail", load_id=load.load_id)
     else:
@@ -942,6 +993,10 @@ def edit_reschedule_approvals(request, load_id, request_id):
             rr.original_appt_start = stop.appt_start
             rr.original_appt_end = stop.appt_end
 
+            # capture old appointment times for comparison after save
+            prev_start = stop.appt_start
+            prev_end = stop.appt_end
+
             # Manual override for approval checkboxes (form may not capture unchecked state properly)
             rr.consignee_approved = bool(request.POST.get("consignee_approved"))
             rr.broker_approved = bool(request.POST.get("broker_approved"))
@@ -950,6 +1005,14 @@ def edit_reschedule_approvals(request, load_id, request_id):
             rr.save()
 
             if rr.is_fully_approved:
+                stop.appt_start = rr.requested_appt_start
+                stop.appt_end = rr.requested_appt_end
+                stop.appointment_type = "appt"
+                stop.save()
+
+                if prev_start != stop.appt_start or prev_end != stop.appt_end:
+                    refresh_route_snapshot(load=load)
+
                 messages.success(
                     request,
                     "Reschedule fully approved. Appointment updated on stop.",
@@ -1186,6 +1249,7 @@ def stop_edit(request, stop_id):
 
 
 # HTMX endpoints
+@login_required
 def search_brokers(request):
     """Search brokers by name"""
     query = request.GET.get("q", "").strip()
@@ -1198,6 +1262,7 @@ def search_brokers(request):
     return render(request, "tms/partials/_broker_options.html", {"brokers": brokers})
 
 
+@login_required
 def search_facilities(request):
     """Search facility by name"""
     query = request.GET.get("q", "").strip()
