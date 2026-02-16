@@ -36,9 +36,9 @@ class BrokerAdmin(admin.ModelAdmin):
 
 @admin.register(Facility)
 class FacilityAdmin(admin.ModelAdmin):
-    list_display = ("name", "facility_type", "city", "state", "contact_name", "phone")
+    list_display = ("name",  "city", "state", "contact_name", "phone")
     search_fields = ("name", "city", "state", "contact_name")
-    list_filter = ("facility_type", "state", "appointment_required")
+    list_filter = ("state",)
     readonly_fields = ("created_at", "updated_at")
 
 

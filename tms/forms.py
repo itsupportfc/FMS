@@ -22,7 +22,23 @@ from .models import (
 _DT_LOCAL_FMT = "%Y-%m-%dT%H:%M"
 
 
-class LoadForm(forms.ModelForm):
+class RequiredFieldsMixin:
+    """
+    Mixin to automatically add asterisks (*) to required field labels.
+    blank=True => in field definition => not required => no asterisk
+    blank=False (default) => required => add asterisk
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        for field_name, field in self.fields.items():
+            if field.required:
+                current_label = field.label or field_name.replace("_", " ").title()
+                field.label = f"{current_label} *"
+
+
+class LoadForm(RequiredFieldsMixin, forms.ModelForm):
     """
     Form for creating and editing Load records.
 
@@ -64,6 +80,12 @@ class LoadForm(forms.ModelForm):
             "planned_eta": forms.DateTimeInput(
                 attrs={"type": "datetime-local", "step": "60"}
             ),
+            "load_id": forms.TextInput(
+                attrs={"placeholder": "Internal or broker load ID"}
+            ),
+            "rate": forms.NumberInput(attrs={"placeholder": "0.00", "step": "0.01"}),
+            "miles": forms.NumberInput(attrs={"placeholder": "0"}),
+            "deadhead_miles": forms.NumberInput(attrs={"placeholder": "0"}),
         }
 
     def __init__(self, *args, **kwargs):
