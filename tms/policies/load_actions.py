@@ -18,7 +18,7 @@ def get_available_actions(user, load: Load) -> list[str]:
             actions.append("cancel_load")
         if load.status not in [Load.Status.BOOKED, Load.Status.COMPLETED]:
             actions.append("add_accessorial")
-        if load.status == Load.Status.DISPATCHED:
+        if load.status == Load.Status.DISPATCHED and load.tracking_agent == user:
             actions.append("start_transit")
         if load.status == Load.Status.IN_TRANSIT:
             actions.append("mark_delivered")
@@ -33,7 +33,7 @@ def get_available_actions(user, load: Load) -> list[str]:
             actions.append("add_accessorial")
 
     if is_tracker(user):
-        if load.status == Load.Status.DISPATCHED:
+        if load.status == Load.Status.DISPATCHED and load.tracking_agent == user:
             actions.append("start_transit")
         if load.status == Load.Status.IN_TRANSIT:
             actions.append("mark_delivered")

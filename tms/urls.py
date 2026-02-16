@@ -22,6 +22,9 @@ from django.urls import path
 from .views import (
     accessorial_charge_type_fields,
     active_loads,
+    broker_create,
+    brokers_list,
+    carrier_create,
     carriers_list,
     change_status,
     create_accessorial,
@@ -31,10 +34,13 @@ from .views import (
     create_reschedule_request,
     create_tracking_update,
     dashboard,
+    driver_create,
     driver_hos_summary,
     drivers_list,
     edit_accessorial,
     edit_reschedule_approvals,
+    facilities_list,
+    facility_create,
     load_carrier_assets,
     load_detail,
     load_lock_ping,
@@ -44,14 +50,35 @@ from .views import (
     loads_list,
     my_loads,
     my_loads_export_excel,
+    owner_operator_create,
+    owner_operators_list,
     search_brokers,
     search_facilities,
     stop_edit,
+    truck_create,
+    trucks_list,
     upload_document,
 )
 
 urlpatterns = [
     path("", dashboard, name="dashboard"),
+    # entity detail routes
+    path("facilities/", facilities_list, name="facilities_list"),
+    path("facilities/create/", facility_create, name="facilities_create"),
+    path("brokers/", brokers_list, name="brokers_list"),
+    path("brokers/create/", broker_create, name="brokers_create"),
+    path("carriers/", carriers_list, name="carriers_list"),
+    path("carriers/create/", carrier_create, name="carriers_create"),
+    path("owner-operators/", owner_operators_list, name="owner_operators_list"),
+    path(
+        "owner-operators/create/",
+        owner_operator_create,
+        name="owner_operators_create",
+    ),
+    path("drivers/", drivers_list, name="drivers_list"),
+    path("drivers/create/", driver_create, name="drivers_create"),
+    path("trucks/", trucks_list, name="trucks_list"),
+    path("trucks/create/", truck_create, name="trucks_create"),
     # Specific load routes BEFORE the catch-all <str:load_id>/ route
     path("loads/carrier-assets/", load_carrier_assets, name="load-carrier-assets"),
     path("loads/active/", active_loads, name="active_loads"),
@@ -121,7 +148,4 @@ urlpatterns = [
     path("loads/", loads_list, name="loads_list"),
     path("my-loads/", my_loads, name="my_loads"),
     path("my-loads/export/", my_loads_export_excel, name="my_loads_export_excel"),
-    path("carriers/", carriers_list, name="carriers_list"),
-    path("drivers/", drivers_list, name="drivers_list"),
 ]
-

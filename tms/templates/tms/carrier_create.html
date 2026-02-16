@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% load form_filters %}
+
+{% block content %}
+
+    <div class="page-header">
+        <div class="flex items-center justify-between gap-6">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Create Carrier</h1>
+                <p class="text-sm text-gray-600 mt-2">Add a normal carrier company (owner-operator workflow is separate).</p>
+            </div>
+            <button type="submit" form="carrier-form" class="btn-primary">Create Carrier</button>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto px-8 py-6">
+        {% if messages %}
+            <div class="mb-6 space-y-3">
+                {% for message in messages %}
+                    <div class="{% if message.tags == 'error' %}
+                                    alert-error
+                                {% elif message.tags == 'success' %}
+                                    alert-success
+                                {% else %}
+                                    alert-info
+                                {% endif %}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <form id="carrier-form" method="post" class="space-y-6">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+                <div class="alert-error">
+                    {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+                </div>
+            {% endif %}
+
+            <div class="section">
+                <h2 class="section-title">Basic Information</h2>
+
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="col-span-2">
+                        <label class="form-label">{{ form.name.label }}</label>
+                        {{ form.name|add_class:"form-input" }}
+                        {% if form.name.errors %}<p class="form-error">{{ form.name.errors.0 }}</p>{% endif %}
+                    </div>
+
+                    <div>
+                        <label class="form-label">{{ form.mc_number.label }}</label>
+                        {{ form.mc_number|add_class:"form-input" }}
+                        {% if form.mc_number.errors %}<p class="form-error">{{ form.mc_number.errors.0 }}</p>{% endif %}
+                    </div>
+
+                    <div>
+                        <label class="form-label">{{ form.dot_number.label }}</label>
+                        {{ form.dot_number|add_class:"form-input" }}
+                        {% if form.dot_number.errors %}<p class="form-error">{{ form.dot_number.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">Contact Information</h2>
+
+                <div class="grid grid-cols-2 gap-6">
+                    <div>
+                        <label class="form-label">{{ form.primary_contact_name.label }}</label>
+                        {{ form.primary_contact_name|add_class:"form-input" }}
+                        {% if form.primary_contact_name.errors %}<p class="form-error">{{ form.primary_contact_name.errors.0 }}</p>{% endif %}
+                    </div>
+
+                    <div>
+                        <label class="form-label">{{ form.primary_phone.label }}</label>
+                        {{ form.primary_phone|add_class:"form-input" }}
+                        {% if form.primary_phone.errors %}<p class="form-error">{{ form.primary_phone.errors.0 }}</p>{% endif %}
+                    </div>
+
+                    <div class="col-span-2">
+                        <label class="form-label">{{ form.primary_email.label }}</label>
+                        {{ form.primary_email|add_class:"form-input" }}
+                        {% if form.primary_email.errors %}<p class="form-error">{{ form.primary_email.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">Address</h2>
+
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="col-span-2">
+                        <label class="form-label">{{ form.address_line1.label }}</label>
+                        {{ form.address_line1|add_class:"form-input" }}
+                        {% if form.address_line1.errors %}<p class="form-error">{{ form.address_line1.errors.0 }}</p>{% endif %}
+                    </div>
+
+                    <div class="col-span-2">
+                        <label class="form-label">{{ form.address_line2.label }}</label>
+                        {{ form.address_line2|add_class:"form-input" }}
+                        {% if form.address_line2.errors %}<p class="form-error">{{ form.address_line2.errors.0 }}</p>{% endif %}
+                    </div>
+
+                    <div>
+                        <label class="form-label">{{ form.city.label }}</label>
+                        {{ form.city|add_class:"form-input" }}
+                        {% if form.city.errors %}<p class="form-error">{{ form.city.errors.0 }}</p>{% endif %}
+                    </div>
+
+                    <div>
+                        <label class="form-label">{{ form.state.label }}</label>
+                        {{ form.state|add_class:"form-input" }}
+                        {% if form.state.errors %}<p class="form-error">{{ form.state.errors.0 }}</p>{% endif %}
+                        <p class="helper-text">Two-letter state code (e.g., CA, TX, NY)</p>
+                    </div>
+
+                    <div>
+                        <label class="form-label">{{ form.zip_code.label }}</label>
+                        {{ form.zip_code|add_class:"form-input" }}
+                        {% if form.zip_code.errors %}<p class="form-error">{{ form.zip_code.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">Compliance & Notes</h2>
+
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="col-span-2">
+                        <label class="form-label flex items-center gap-2">
+                            {{ form.carrier_has_insurance }}
+                            <span>{{ form.carrier_has_insurance.label }}</span>
+                        </label>
+                    </div>
+
+                    <div class="col-span-2">
+                        <label class="form-label">{{ form.notes.label }}</label>
+                        {{ form.notes|add_class:"form-textarea" }}
+                        {% if form.notes.errors %}<p class="form-error">{{ form.notes.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+
+{% endblock %}

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="page-header mb-6 px-8">
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Drivers</h1>
+                <p class="text-sm text-gray-600">Manage assigned and available drivers</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <a href="{% url 'drivers_create' %}" class="btn-primary">Add Driver</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-[1600px] mx-auto px-8 pb-10">
+        {% if page_obj %}
+            <div class="card overflow-hidden p-0">
+                <table class="min-w-full text-[15px] text-left text-gray-800">
+                    <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                            <th class="table-header px-6 py-3">Driver</th>
+                            <th class="table-header px-6 py-3">Carrier</th>
+                            <th class="table-header px-6 py-3">Phone</th>
+                            <th class="table-header px-6 py-3">Email</th>
+                            <th class="table-header px-6 py-3">CDL #</th>
+                            <th class="table-header px-6 py-3">CDL Expiry</th>
+                            <th class="table-header px-6 py-3">HOS Cycle</th>
+                            <th class="table-header px-6 py-3">Current Truck</th>
+                            <th class="table-header px-6 py-3">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for driver in page_obj %}
+                            <tr class="border-b border-gray-200 hover:bg-gray-50 transition-colors">
+                                <td class="table-cell px-6 py-4 font-semibold text-gray-900">{{ driver.full_name }}</td>
+                                <td class="table-cell px-6 py-4">{{ driver.carrier.name }}</td>
+                                <td class="table-cell px-6 py-4">{{ driver.phone }}</td>
+                                <td class="table-cell px-6 py-4">{{ driver.email|default:"-" }}</td>
+                                <td class="table-cell px-6 py-4">{{ driver.cdl_number }}</td>
+                                <td class="table-cell px-6 py-4">{{ driver.cdl_expiration|date:"M d, Y"|default:"-" }}</td>
+                                <td class="table-cell px-6 py-4">{{ driver.get_hos_cycle_display }}</td>
+                                <td class="table-cell px-6 py-4">{{ driver.current_truck.truck_number|default:"-" }}</td>
+                                <td class="table-cell px-6 py-4">
+                                    {% if driver.current_status == 'available' %}
+                                        <span class="badge-green">Available</span>
+                                    {% else %}
+                                        <span class="badge-amber">Assigned</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                <div class="pagination">
+                    <div class="step-links">
+                        <div class="start">
+                            {% if page_obj.has_previous %}
+                                <a href="?page=1">« First</a>
+                                <a href="?page={{ page_obj.previous_page_number }}">‹ Previous</a>
+                            {% else %}
+                                <span class="text-sm text-gray-400">« First</span>
+                                <span class="text-sm text-gray-400">‹ Previous</span>
+                            {% endif %}
+                        </div>
+
+                        <span class="current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+
+                        <div class="end">
+                            {% if page_obj.has_next %}
+                                <a href="?page={{ page_obj.next_page_number }}">Next ›</a>
+                                <a href="?page={{ page_obj.paginator.num_pages }}">Last »</a>
+                            {% else %}
+                                <span class="text-sm text-gray-400">Next ›</span>
+                                <span class="text-sm text-gray-400">Last »</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="card text-center py-12">
+                <p class="text-[15px] text-gray-600">No drivers found.</p>
+                <a href="{% url 'drivers_create' %}" class="btn-primary inline-block mt-4">Add Driver</a>
+            </div>
+        {% endif %}
+    </div>
+
+{% endblock %}

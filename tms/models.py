@@ -103,17 +103,6 @@ class LoadQuerySet(models.QuerySet):
     def for_tracking_agent(self, user):
         return self.filter(tracking_agent=user)
 
-    def with_lock_status(self):
-        """
-        Expensive join+annotation. Only use when UI needs it.
-        (You said V1 doesn't need it -> don't call this in list.)
-        """
-        now = timezone.now()
-        return self.select_related("lock", "lock__locked_by").annotate(
-            is_locked=Q(lock__isnull=False) & Q(lock__expires_at__gt=now),
-            locked_by_name=F("lock__locked_by__username"),
-        )
-
 
 class LoadManager(models.Manager):
     def get_queryset(self):
@@ -199,13 +188,7 @@ class Broker(BaseModel):
 class Facility(BaseModel):
     """Shipper or receiver location."""
 
-    class FacilityType(models.TextChoices):
-        SHIPPER = "shipper", "Shipper"
-        RECEIVER = "receiver", "Receiver (Consignee)"
-
-    # Identification
     name = models.CharField(max_length=200)
-    facility_type = models.CharField(max_length=10, choices=FacilityType.choices)
 
     # Address
     address_line1 = models.CharField(max_length=200)
@@ -218,18 +201,12 @@ class Facility(BaseModel):
     contact_name = models.CharField(max_length=100)
     phone = models.CharField(max_length=20)
 
-    # Operational Info
-    appointment_required = models.BooleanField(default=True)
-    hours_of_operation = models.CharField(
-        max_length=100, default="24/7", help_text="e.g., Mon-Fri 8am-5pm"
-    )
-
     notes = models.TextField(
         blank=True, help_text="Special instructions, dock info, etc."
     )
 
     def __str__(self):
-        return f"{self.name} ({self.city}, {self.state})"
+        return f"{self.name} ({self.city}, {self.state} )"
 
     class Meta:
         ordering = ["name"]
@@ -237,7 +214,6 @@ class Facility(BaseModel):
         verbose_name_plural = "Facilities"
         indexes = [
             models.Index(fields=["name", "city"], name="facility_name_city_idx"),
-            models.Index(fields=["facility_type"], name="facility_type_idx"),
         ]
 
 
@@ -940,7 +916,7 @@ class Load(BaseModel):
         null=True,
     )
     rpm = models.DecimalField(
-        max_digits=5,
+        max_digits=7,
         decimal_places=2,
         editable=False,
         null=True,

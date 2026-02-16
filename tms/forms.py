@@ -7,8 +7,11 @@ from django.forms import ModelChoiceField
 
 from .models import (
     Accessorial,
+    Broker,
+    Carrier,
     Driver,
     DutyLog,
+    Facility,
     Load,
     LoadDocument,
     LoadNote,
@@ -108,19 +111,6 @@ class LoadForm(RequiredFieldsMixin, forms.ModelForm):
         self.user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
 
-        # Set placeholder text (UX hints, not styling)
-        placeholders = {
-            "load_id": "Internal or broker load ID",
-            "rate": "0.00",
-            "miles": "0",
-            "deadhead_miles": "0",
-            # "remarks": "Notes for dispatch/tracking",
-        }
-
-        for name, field in self.fields.items():
-            if name in placeholders:
-                field.widget.attrs.setdefault("placeholder", placeholders[name])
-
         # Dynamic Dropdown
         carrier_id = None
 
@@ -175,7 +165,7 @@ class LoadForm(RequiredFieldsMixin, forms.ModelForm):
                     self.fields[f].widget.attrs.update({"class": disabled_classes})
 
 
-class LoadStopForm(forms.ModelForm):
+class LoadStopForm(RequiredFieldsMixin, forms.ModelForm):
     class Meta:
         model = LoadStop
         fields = [
@@ -211,7 +201,7 @@ LoadStopFormSet = forms.inlineformset_factory(
 )
 
 
-class LoadNoteForm(forms.ModelForm):
+class LoadNoteForm(RequiredFieldsMixin, forms.ModelForm):
     class Meta:
         model = LoadNote
         fields = ["body"]
@@ -226,7 +216,7 @@ class LoadNoteForm(forms.ModelForm):
         }
 
 
-class DocumentUploadForm(forms.ModelForm):
+class DocumentUploadForm(RequiredFieldsMixin, forms.ModelForm):
     """
     Form for uploading documents to a load.
 
@@ -246,7 +236,7 @@ class DocumentUploadForm(forms.ModelForm):
         }
 
 
-class TrackingUpdateForm(forms.ModelForm):
+class TrackingUpdateForm(RequiredFieldsMixin, forms.ModelForm):
     """
     Form for creating tracking updates.
 
@@ -291,7 +281,7 @@ class TrackingUpdateForm(forms.ModelForm):
         return cleaned
 
 
-class RescheduleRequestForm(forms.ModelForm):
+class RescheduleRequestForm(RequiredFieldsMixin, forms.ModelForm):
     """
     Form for requesting and recording stop appointment reschedules.
 
@@ -345,7 +335,7 @@ class RescheduleRequestForm(forms.ModelForm):
 # ============================================================================
 
 
-class AccessorialForm(forms.ModelForm):
+class AccessorialForm(RequiredFieldsMixin, forms.ModelForm):
     class Meta:
         model = Accessorial
         fields = [
@@ -469,7 +459,7 @@ class AccessorialForm(forms.ModelForm):
 # ============================================================================
 
 
-class DutyLogForm(forms.ModelForm):
+class DutyLogForm(RequiredFieldsMixin, forms.ModelForm):
     class Meta:
         model = DutyLog
         fields = [
@@ -534,3 +524,318 @@ class StopEditForm(forms.Form):
             raise ValidationError("Departure time must be after arrival time.")
 
         return cleaned
+
+
+# ENTITY CREATION FORMS
+class FacilityForm(RequiredFieldsMixin, forms.ModelForm):
+    """Form for creating and editing facilities."""
+
+    class Meta:
+        model = Facility
+        fields = [
+            "name",
+            "address_line1",
+            "address_line2",
+            "city",
+            "state",
+            "zip_code",
+            "contact_name",
+            "phone",
+            "notes",
+        ]
+        widgets = {
+            "notes": forms.Textarea(attrs={"rows": 3, "placeholder": "Add notes..."}),
+            "state": forms.TextInput(attrs={"placeholder": "e.g., NY", "maxlength": 2}),
+        }
+
+
+class BrokerForm(RequiredFieldsMixin, forms.ModelForm):
+    """Form for creating and editing brokers."""
+
+    class Meta:
+        model = Broker
+        fields = [
+            "name",
+            "mc_number",
+            "primary_contact_name",
+            "primary_phone",
+            "primary_email",
+            "notes",
+            "credit_history",
+            "average_payment_days",
+        ]
+        widgets = {
+            "notes": forms.Textarea(
+                attrs={"rows": 3, "placeholder": "General notes about this broker..."}
+            ),
+            "credit_history": forms.Textarea(
+                attrs={"rows": 3, "placeholder": "Payment history, credit issues, etc."}
+            ),
+        }
+
+
+class CarrierForm(RequiredFieldsMixin, forms.ModelForm):
+    """Form for creating normal carriers (not owner-operators)."""
+
+    class Meta:
+        model = Carrier
+        fields = [
+            "name",
+            "mc_number",
+            "dot_number",
+            "primary_contact_name",
+            "primary_phone",
+            "primary_email",
+            "address_line1",
+            "address_line2",
+            "city",
+            "state",
+            "zip_code",
+            "carrier_has_insurance",
+            "notes",
+        ]
+        widgets = {
+            "notes": forms.Textarea(
+                attrs={"rows": 3, "placeholder": "General notes about this carrier..."}
+            ),
+            "state": forms.TextInput(attrs={"placeholder": "e.g., NY", "maxlength": 2}),
+        }
+
+
+class DriverForm(RequiredFieldsMixin, forms.ModelForm):
+    """Form for creating and editing drivers."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        carrier_field = cast(ModelChoiceField, self.fields["carrier"])
+        carrier_field.queryset = Carrier.objects.filter(
+            carrier_type=Carrier.CarrierType.COMPANY
+        ).order_by("name")
+
+    class Meta:
+        model = Driver
+        fields = [
+            "carrier",
+            "first_name",
+            "last_name",
+            "phone",
+            "email",
+            "cdl_number",
+            "cdl_expiration",
+            "hos_cycle",
+            "notes",
+        ]
+        widgets = {
+            "cdl_expiration": forms.DateInput(attrs={"type": "date"}),
+            "notes": forms.Textarea(
+                attrs={
+                    "rows": 3,
+                    "placeholder": "Driver notes, constraints, preferences...",
+                }
+            ),
+        }
+
+
+class TruckForm(RequiredFieldsMixin, forms.ModelForm):
+    """Form for creating and editing trucks for normal carriers."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        carrier_field = cast(ModelChoiceField, self.fields["carrier"])
+        carrier_field.queryset = Carrier.objects.filter(
+            carrier_type=Carrier.CarrierType.COMPANY
+        ).order_by("name")
+
+    class Meta:
+        model = Truck
+        fields = [
+            "carrier",
+            "truck_number",
+            "trailer_number",
+            "vin",
+            "license_plate",
+            "equipment_type",
+            "length_feet",
+            "chassis_no",
+            "truck_has_insurance",
+            "notes",
+        ]
+        widgets = {
+            "length_feet": forms.NumberInput(attrs={"min": 1, "step": 1}),
+            "notes": forms.Textarea(
+                attrs={"rows": 3, "placeholder": "Truck notes, maintenance details..."}
+            ),
+        }
+
+
+class OwnerOperatorForm(RequiredFieldsMixin, forms.Form):
+    # Carrier fields
+    carrier_name = forms.CharField(
+        max_length=200,
+        label="Carrier Name",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., John Doe Trucking"}),
+    )
+    mc_number = forms.CharField(
+        max_length=20,
+        label="MC Number",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., MC123456"}),
+    )
+    dot_number = forms.CharField(
+        max_length=20,
+        label="DOT Number",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., DOT123456"}),
+    )
+    primary_contact_name = forms.CharField(
+        max_length=100,
+        label="Contact Name",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., John Doe"}),
+    )
+    primary_phone = forms.CharField(
+        max_length=20,
+        label="Contact Phone",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., 555-1234"}),
+    )
+    primary_email = forms.EmailField(
+        label="Contact Email",
+        widget=forms.EmailInput(attrs={"placeholder": "e.g., john@example.com"}),
+    )
+    address_line1 = forms.CharField(
+        max_length=200,
+        label="Address Line 1",
+        widget=forms.TextInput(attrs={"placeholder": "Street address"}),
+    )
+    address_line2 = forms.CharField(
+        max_length=200,
+        required=False,
+        label="Address Line 2",
+        widget=forms.TextInput(attrs={"placeholder": "Apt, suite, etc. (optional)"}),
+    )
+    city = forms.CharField(
+        max_length=100,
+        label="City",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., Los Angeles"}),
+    )
+    state = forms.CharField(
+        max_length=2,
+        label="State",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., CA", "maxlength": "2"}),
+    )
+    zip_code = forms.CharField(
+        max_length=10,
+        label="Zip Code",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., 90001"}),
+    )
+    carrier_has_insurance = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Has Insurance",
+    )
+    carrier_notes = forms.CharField(
+        required=False,
+        label="Carrier Notes",
+        widget=forms.Textarea(
+            attrs={"rows": 2, "placeholder": "Additional notes about carrier..."}
+        ),
+    )
+
+    # Driver fields
+    driver_first_name = forms.CharField(
+        max_length=50,
+        label="Driver First Name",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., John"}),
+    )
+    driver_last_name = forms.CharField(
+        max_length=50,
+        label="Driver Last Name",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., Doe"}),
+    )
+    driver_phone = forms.CharField(
+        max_length=20,
+        label="Driver Phone",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., 555-1234"}),
+    )
+    driver_email = forms.EmailField(
+        required=False,
+        label="Driver Email",
+        widget=forms.EmailInput(attrs={"placeholder": "e.g., john@example.com"}),
+    )
+    cdl_number = forms.CharField(
+        max_length=50,
+        label="CDL Number",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., A1234567"}),
+    )
+    cdl_expiration = forms.DateField(
+        required=False,
+        label="CDL Expiration Date",
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+    hos_cycle = forms.ChoiceField(
+        choices=[
+            ("60_7", "60 hours / 7 days"),
+            ("70_8", "70 hours / 8 days"),
+        ],
+        initial="60_7",
+        label="HOS Cycle",
+    )
+    driver_notes = forms.CharField(
+        required=False,
+        label="Driver Notes",
+        widget=forms.Textarea(
+            attrs={
+                "rows": 2,
+                "placeholder": "Driver preferences, certifications, etc...",
+            }
+        ),
+    )
+
+    # Truck fields
+    truck_number = forms.CharField(
+        max_length=50,
+        label="Truck Number",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., TRUCK-001"}),
+    )
+    trailer_number = forms.CharField(
+        max_length=50,
+        required=False,
+        label="Trailer Number",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., TRAILER-22"}),
+    )
+    equipment_type = forms.ChoiceField(
+        choices=Truck.EquipmentType.choices,
+        label="Equipment Type",
+    )
+    vin = forms.CharField(
+        max_length=17,
+        required=False,
+        label="VIN",
+        widget=forms.TextInput(
+            attrs={"placeholder": "e.g., 1FUJGHDV8BLBP4086", "maxlength": "17"}
+        ),
+    )
+    chassis_no = forms.CharField(
+        max_length=50,
+        required=False,
+        label="Chassis Number",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., CH-2024-19"}),
+    )
+    license_plate = forms.CharField(
+        max_length=20,
+        label="License Plate",
+        widget=forms.TextInput(attrs={"placeholder": "e.g., ABC1234"}),
+    )
+    truck_has_insurance = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Truck Has Insurance",
+    )
+    truck_notes = forms.CharField(
+        required=False,
+        label="Truck Notes",
+        widget=forms.Textarea(
+            attrs={"rows": 2, "placeholder": "Maintenance notes, equipment, etc..."}
+        ),
+    )
+
+    def clean_state(self):
+        state = self.cleaned_data.get("state")
+        return state.upper() if state else state

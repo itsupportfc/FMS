@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% load form_filters %}
+
+{% block content %}
+
+    {# ═══════════════════════════════════════════════════════════════════════ #}
+    {# PAGE HEADER                                                              #}
+    {# ═══════════════════════════════════════════════════════════════════════ #}
+    <div class="page-header">
+        <div class="flex items-center justify-between gap-6">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Create Facility</h1>
+                <p class="text-sm text-gray-600 mt-2">Add a new warehouse, distribution center, or customer location.</p>
+            </div>
+            <button type="submit" form="facility-form" class="btn-primary">Create Facility</button>
+        </div>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════════════════ #}
+    {# MAIN CONTENT                                                             #}
+    {# ═══════════════════════════════════════════════════════════════════════ #}
+    <div class="max-w-4xl mx-auto px-8 py-6">
+
+        {# Flash Messages #}
+        {% if messages %}
+            <div class="mb-6 space-y-3">
+                {% for message in messages %}
+                    <div class="{% if message.tags == 'error' %}
+                                    alert-error
+                                {% elif message.tags == 'success' %}
+                                    alert-success
+                                {% else %}
+                                    alert-info
+                                {% endif %}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {# Form #}
+        <form id="facility-form" method="post" class="space-y-6">
+            {% csrf_token %}
+
+            {# Form-level errors #}
+            {% if form.non_field_errors %}
+                <div class="alert-error">
+                    {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+                </div>
+            {% endif %}
+
+            {# Basic Information Section #}
+            <div class="section">
+                <h2 class="section-title">Basic Information</h2>
+
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="col-span-2">
+                        <label class="form-label">{{ form.name.label }}</label>
+                        {{ form.name|add_class:"form-input" }}
+                        {% if form.name.errors %}<p class="form-error">{{ form.name.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            {# Address Section #}
+            <div class="section">
+                <h2 class="section-title">Address</h2>
+
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="col-span-2">
+                        <label class="form-label">{{ form.address_line1.label }}</label>
+                        {{ form.address_line1|add_class:"form-input" }}
+                        {% if form.address_line1.errors %}<p class="form-error">{{ form.address_line1.errors.0 }}</p>{% endif %}
+                    </div>
+
+                    <div class="col-span-2">
+                        <label class="form-label">{{ form.address_line2.label }}</label>
+                        {{ form.address_line2|add_class:"form-input" }}
+                        {% if form.address_line2.errors %}<p class="form-error">{{ form.address_line2.errors.0 }}</p>{% endif %}
+                    </div>
+
+                    <div>
+                        <label class="form-label">{{ form.city.label }}</label>
+                        {{ form.city|add_class:"form-input" }}
+                        {% if form.city.errors %}<p class="form-error">{{ form.city.errors.0 }}</p>{% endif %}
+                    </div>
+
+                    <div>
+                        <label class="form-label">{{ form.state.label }}</label>
+                        {{ form.state|add_class:"form-input" }}
+                        {% if form.state.errors %}<p class="form-error">{{ form.state.errors.0 }}</p>{% endif %}
+                        <p class="helper-text">Two-letter state code (e.g., CA, TX, NY)</p>
+                    </div>
+
+                    <div>
+                        <label class="form-label">{{ form.zip_code.label }}</label>
+                        {{ form.zip_code|add_class:"form-input" }}
+                        {% if form.zip_code.errors %}<p class="form-error">{{ form.zip_code.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            {# Contact Information Section #}
+            <div class="section">
+                <h2 class="section-title">Contact Information</h2>
+
+                <div class="grid grid-cols-2 gap-6">
+                    <div>
+                        <label class="form-label">{{ form.contact_name.label }}</label>
+                        {{ form.contact_name|add_class:"form-input" }}
+                        {% if form.contact_name.errors %}<p class="form-error">{{ form.contact_name.errors.0 }}</p>{% endif %}
+                    </div>
+
+                    <div>
+                        <label class="form-label">{{ form.phone.label }}</label>
+                        {{ form.phone|add_class:"form-input" }}
+                        {% if form.phone.errors %}<p class="form-error">{{ form.phone.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            {# Operational Details Section #}
+            <div class="section">
+                <h2 class="section-title">Operational Details</h2>
+
+                <div class="grid grid-cols-2 gap-6">
+                    {% comment %} <div>
+                        <label class="form-label">{{ form.hours_of_operation.label }}</label>
+                        {{ form.hours_of_operation|add_class:"form-input" }}
+                        {% if form.hours_of_operation.errors %}<p class="form-error">{{ form.hours_of_operation.errors.0 }}</p>{% endif %}
+                        <p class="helper-text">e.g., Mon-Fri 8am-5pm, 24/7</p>
+                    </div>
+
+                    <div>
+                        <label class="form-label flex items-center gap-2">
+                            {{ form.appointment_required }}
+                            <span>{{ form.appointment_required.label }}</span>
+                        </label>
+                        <p class="helper-text">Check if appointment is required for pickup/delivery</p>
+                    </div> {% endcomment %}
+
+                    <div class="col-span-2">
+                        <label class="form-label">{{ form.notes.label }}</label>
+                        {{ form.notes|add_class:"form-textarea" }}
+                        {% if form.notes.errors %}<p class="form-error">{{ form.notes.errors.0 }}</p>{% endif %}
+                        <p class="helper-text">Special instructions, dock info, gate codes, etc.</p>
+                    </div>
+                </div>
+            </div>
+
+            {% comment %} {# Form Actions #}
+            <div class="flex justify-end gap-3">
+                <a href="{% url 'facilities_list' %}" class="btn-ghost">Cancel</a>
+                <button type="submit" class="btn-primary">Create Facility</button>
+            </div> {% endcomment %}
+
+        </form>
+    </div>
+
+{% endblock %}

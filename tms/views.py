@@ -50,15 +50,21 @@ from tms.utils.locks import require_load_lock
 
 from .forms import (
     AccessorialForm,
+    BrokerForm,
+    CarrierForm,
     DocumentUploadForm,
+    DriverForm,
     DutyLogForm,
+    FacilityForm,
     LoadForm,
     LoadNoteForm,
     LoadStopForm,
     LoadStopFormSet,
+    OwnerOperatorForm,
     RescheduleRequestForm,
     StopEditForm,
     TrackingUpdateForm,
+    TruckForm,
 )
 from .models import (
     Accessorial,
@@ -74,6 +80,7 @@ from .models import (
     TrackingUpdate,
     Truck,
 )
+from .services.carrier_creation import CarrierCreationError, create_carrier_with_assets
 
 
 @login_required
@@ -327,7 +334,7 @@ def load_detail(request, load_id):
             load_locks.release_lock(
                 load=load, user=request.user, allow_override=False
             )  # Only release if it's currently locked by this user
-            return redirect("dashboard")
+            return redirect("load_detail", load_id=load.load_id)
     else:
         # GET request: Show form pre-filled with current load data
         form = LoadForm(instance=load, user=request.user)
@@ -854,22 +861,196 @@ def my_loads_export_excel(request):
 
 @login_required
 def carriers_list(request):
-    """List all carriers"""
-    carriers = Carrier.objects.prefetch_related("trucks", "drivers").order_by("name")
-    context = {"carriers": carriers}
+    """List normal carriers only (exclude owner-operators)."""
+    carriers = Carrier.objects.filter(
+        carrier_type=Carrier.CarrierType.COMPANY
+    ).order_by("name")
+
+    paginator = Paginator(carriers, 20)  # 20 carriers per page
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
+
+    context = {"carriers": page_obj.object_list, "page_obj": page_obj}
 
     return render(request, "tms/carriers_list.html", context)
 
 
 @login_required
+def owner_operators_list(request):
+    """List owner-operator carriers."""
+    owner_operators = Carrier.objects.filter(
+        carrier_type=Carrier.CarrierType.OWNER_OPERATOR
+    ).order_by("name")
+
+    paginator = Paginator(owner_operators, 20)  # 20 owner-operators per page
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
+
+    context = {"owner_operators": page_obj.object_list, "page_obj": page_obj}
+    return render(request, "tms/owner_operators_list.html", context)
+
+
+@login_required
+def carrier_create(request):
+    """Create a new normal carrier (company only)."""
+
+    if request.method == "POST":
+        form = CarrierForm(request.POST)
+        if form.is_valid():
+            carrier = form.save(commit=False)
+            carrier.carrier_type = Carrier.CarrierType.COMPANY
+            carrier.created_by = request.user
+            carrier.save()
+            messages.success(request, f"Carrier '{carrier.name}' created successfully!")
+            return redirect("carriers_list")
+    else:
+        form = CarrierForm()
+
+    return render(request, "tms/carrier_create.html", {"form": form})
+
+
+@login_required
 def drivers_list(request):
-    """List all drivers"""
+    """List all drivers with pagination."""
     drivers = Driver.objects.select_related("carrier", "current_truck").order_by(
         "last_name", "first_name"
     )
-    context = {"drivers": drivers}
+
+    paginator = Paginator(drivers, 20)  # 20 drivers per page
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
+
+    context = {"drivers": page_obj.object_list, "page_obj": page_obj}
 
     return render(request, "tms/drivers_list.html", context)
+
+
+@login_required
+def driver_create(request):
+    """Create a new driver for normal carriers."""
+
+    if request.method == "POST":
+        form = DriverForm(request.POST)
+        if form.is_valid():
+            driver = form.save()
+            messages.success(
+                request, f"Driver '{driver.full_name}' created successfully!"
+            )
+            return redirect("drivers_list")
+    else:
+        form = DriverForm()
+
+    return render(request, "tms/driver_create.html", {"form": form})
+
+
+@login_required
+def owner_operator_create(request):
+    """Create an owner-operator with carrier, driver, and truck details."""
+
+    if request.method == "POST":
+        form = OwnerOperatorForm(request.POST)
+
+        if form.is_valid():
+            try:
+                carrier_data = {
+                    "name": form.cleaned_data["carrier_name"],
+                    "mc_number": form.cleaned_data["mc_number"],
+                    "dot_number": form.cleaned_data["dot_number"],
+                    "carrier_type": Carrier.CarrierType.OWNER_OPERATOR,
+                    "primary_contact_name": form.cleaned_data["primary_contact_name"],
+                    "primary_phone": form.cleaned_data["primary_phone"],
+                    "primary_email": form.cleaned_data["primary_email"],
+                    "address_line1": form.cleaned_data["address_line1"],
+                    "address_line2": form.cleaned_data.get("address_line2", ""),
+                    "city": form.cleaned_data["city"],
+                    "state": form.cleaned_data["state"],
+                    "zip_code": form.cleaned_data["zip_code"],
+                    "carrier_has_insurance": form.cleaned_data.get(
+                        "carrier_has_insurance", True
+                    ),
+                    "notes": form.cleaned_data.get("carrier_notes", ""),
+                }
+
+                driver_data = {
+                    "first_name": form.cleaned_data["driver_first_name"],
+                    "last_name": form.cleaned_data["driver_last_name"],
+                    "phone": form.cleaned_data["driver_phone"],
+                    "email": form.cleaned_data.get("driver_email", ""),
+                    "cdl_number": form.cleaned_data["cdl_number"],
+                    "cdl_expiration": form.cleaned_data.get("cdl_expiration"),
+                    "hos_cycle": form.cleaned_data["hos_cycle"],
+                    "notes": form.cleaned_data.get("driver_notes", ""),
+                }
+
+                truck_data = {
+                    "truck_number": form.cleaned_data["truck_number"],
+                    "trailer_number": form.cleaned_data.get("trailer_number", ""),
+                    "equipment_type": form.cleaned_data["equipment_type"],
+                    "vin": form.cleaned_data.get("vin", ""),
+                    "license_plate": form.cleaned_data["license_plate"],
+                    "chassis_no": form.cleaned_data.get("chassis_no", ""),
+                    "truck_has_insurance": form.cleaned_data.get(
+                        "truck_has_insurance", True
+                    ),
+                    "notes": form.cleaned_data.get("truck_notes", ""),
+                }
+
+                carrier, driver, truck = create_carrier_with_assets(
+                    carrier_data=carrier_data,
+                    created_by=request.user,
+                    driver_data=driver_data,
+                    truck_data=truck_data,
+                )
+
+                driver_name = driver.full_name if driver else "-"
+                truck_number = truck.truck_number if truck else "-"
+
+                messages.success(
+                    request,
+                    f"Owner-operator '{carrier.name}' created successfully! "
+                    f"Driver: {driver_name}, Truck: {truck_number}",
+                )
+                return redirect("owner_operators_list")
+
+            except CarrierCreationError as error:
+                messages.error(request, str(error))
+            except ValidationError as error:
+                messages.error(request, f"Validation error: {error}")
+    else:
+        form = OwnerOperatorForm()
+
+    return render(request, "tms/owner_operator_create.html", {"form": form})
+
+
+@login_required
+def trucks_list(request):
+    """List all trucks with pagination."""
+    trucks = Truck.objects.select_related("carrier").order_by("truck_number")
+
+    paginator = Paginator(trucks, 20)  # 20 trucks per page
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
+
+    context = {"trucks": page_obj.object_list, "page_obj": page_obj}
+    return render(request, "tms/trucks_list.html", context)
+
+
+@login_required
+def truck_create(request):
+    """Create a new truck for normal carriers."""
+
+    if request.method == "POST":
+        form = TruckForm(request.POST)
+        if form.is_valid():
+            truck = form.save()
+            messages.success(
+                request, f"Truck '{truck.truck_number}' created successfully!"
+            )
+            return redirect("trucks_list")
+    else:
+        form = TruckForm()
+
+    return render(request, "tms/truck_create.html", {"form": form})
 
 
 @login_required
@@ -1276,3 +1457,70 @@ def search_facilities(request):
     return render(
         request, "tms/partials/_facility_options.html", {"facilities": facilities}
     )
+
+
+# ENTITIES
+def facilities_list(request):
+    # apply pagination
+
+    facilities = Facility.objects.all().order_by("name")
+
+    paginator = Paginator(facilities, 20)  # 20 facilities per page
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
+
+    return render(
+        request,
+        "tms/facilities_list.html",
+        {"facilities": page_obj.object_list, "page_obj": page_obj},
+    )
+
+
+def brokers_list(request):
+    # apply pagination
+
+    brokers = Broker.objects.all().order_by("name")
+
+    paginator = Paginator(brokers, 20)  # 20 brokers per page
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
+
+    return render(
+        request,
+        "tms/brokers_list.html",
+        {"brokers": page_obj.object_list, "page_obj": page_obj},
+    )
+
+
+@login_required
+def facility_create(request):
+    """Create a new facility."""
+
+    if request.method == "POST":
+        form = FacilityForm(request.POST)
+        if form.is_valid():
+            facility = form.save()
+            messages.success(
+                request, f"Facility '{facility.name}' created successfully!"
+            )
+            return redirect("facilities_list")  # Adjust to your URL name
+    else:
+        form = FacilityForm()
+
+    return render(request, "tms/facility_create.html", {"form": form})
+
+
+@login_required
+def broker_create(request):
+    """Create a new broker."""
+
+    if request.method == "POST":
+        form = BrokerForm(request.POST)
+        if form.is_valid():
+            broker = form.save()
+            messages.success(request, f"Broker '{broker.name}' created successfully!")
+            return redirect("brokers_list")
+    else:
+        form = BrokerForm()
+
+    return render(request, "tms/broker_create.html", {"form": form})
