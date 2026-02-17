@@ -1,19 +1,40 @@
 <!-- templates/loads/partials/carrier_assets.html -->
 
-<div class="space-y-6">
+<div class="col-span-2 grid grid-cols-2 gap-6">
+
     <div class="space-y-2">
         <label for="id_driver" class="form-label">Driver</label>
-        <select name="driver" id="id_driver" class="form-select">
+        <select name="driver"
+                id="id_driver"
+                class="form-select
+                       {% if is_owner_operator %}bg-gray-100 text-gray-500 cursor-not-allowed border-gray-300{% endif %}"
+                {% if is_owner_operator %}disabled aria-disabled="true"{% endif %}>
             <option value="">Select driver</option>
-            {% for driver in drivers %}<option value="{{ driver.id }}">{{ driver }}</option>{% endfor %}
+            {% for driver in drivers %}
+                <option value="{{ driver.id }}"
+                        {% if selected_driver_id == driver.id %}selected{% endif %}>{{ driver }}</option>
+            {% endfor %}
         </select>
+        {% if is_owner_operator and selected_driver_id %}
+            <input type="hidden" name="driver" value="{{ selected_driver_id }}" />
+        {% endif %}
     </div>
 
     <div class="space-y-2">
         <label for="id_truck" class="form-label">Truck</label>
-        <select name="truck" id="id_truck" class="form-select">
+        <select name="truck"
+                id="id_truck"
+                class="form-select
+                       {% if is_owner_operator %}bg-gray-100 text-gray-500 cursor-not-allowed border-gray-300{% endif %}"
+                {% if is_owner_operator %}disabled aria-disabled="true"{% endif %}>
             <option value="">Select truck</option>
-            {% for truck in trucks %}<option value="{{ truck.id }}">{{ truck }}</option>{% endfor %}
+            {% for truck in trucks %}
+                <option value="{{ truck.id }}"
+                        {% if selected_truck_id == truck.id %}selected{% endif %}>{{ truck }}</option>
+            {% endfor %}
         </select>
+        {% if is_owner_operator and selected_truck_id %}
+            <input type="hidden" name="truck" value="{{ selected_truck_id }}" />
+        {% endif %}
     </div>
 </div>

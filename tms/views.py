@@ -574,7 +574,7 @@ def change_status(request, load_id, action):
 
             # call cancel method ( auto-creates TONU charge)
             cancel_load(load=load, reason=reason)
-            messages.warning(request, "Load cancelled. TONU charge created.")
+            messages.warning(request, "Load cancelled. CREATE TONU charge.")
 
         else:
             # Unknown action ( shouldn't happen if URLs are correct)
@@ -613,6 +613,12 @@ def load_carrier_assets(request):
     """
     carrier_id = request.GET.get("carrier")
 
+    carrier = (
+        Carrier.objects.only("id", "carrier_type").filter(id=carrier_id).first()
+        if carrier_id
+        else None
+    )
+
     drivers = (
         Driver.objects.filter(
             carrier_id=carrier_id, current_status=Driver.DriverStatus.AVAILABLE
@@ -628,12 +634,25 @@ def load_carrier_assets(request):
         else Truck.objects.none()
     )
 
+    is_owner_operator = bool(
+        carrier and carrier.carrier_type == Carrier.CarrierType.OWNER_OPERATOR
+    )
+    selected_driver_id = None
+    selected_truck_id = None
+
+    if is_owner_operator:
+        selected_driver_id = drivers.values_list("id", flat=True).first()
+        selected_truck_id = trucks.values_list("id", flat=True).first()
+
     return render(
         request,
         "tms/partials/carrier_assets.html",
         {
             "drivers": drivers,
             "trucks": trucks,
+            "selected_driver_id": selected_driver_id,
+            "selected_truck_id": selected_truck_id,
+            "is_owner_operator": is_owner_operator,
         },
     )
 
@@ -1076,6 +1095,13 @@ def create_tracking_update(request, load_id):
     """Create a tracking update for a load (tracking agents only)."""
     load = get_object_or_404(Load, load_id=load_id)
 
+    if load.status not in [Load.Status.DISPATCHED, Load.Status.IN_TRANSIT]:
+        messages.error(
+            request,
+            "Can only add tracking updates to loads that are Dispatched or In Transit.",
+        )
+        return redirect("load_detail", load_id=load.load_id)
+
     if request.method == "POST":
         form = TrackingUpdateForm(request.POST)
         if form.is_valid():
@@ -1460,6 +1486,7 @@ def search_facilities(request):
 
 
 # ENTITIES
+@login_required
 def facilities_list(request):
     # apply pagination
 
@@ -1476,6 +1503,7 @@ def facilities_list(request):
     )
 
 
+@login_required
 def brokers_list(request):
     # apply pagination
 
