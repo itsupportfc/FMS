@@ -44,6 +44,10 @@
                 <p class="text-[15px] font-semibold text-white">{{ request.user.get_full_name|default:request.user.username }}</p>
                 <p class="text-[13px] text-gray-400 mt-1">{{ request.user.get_role_display }}</p>
             </div>
+            <a href="{% url 'password_change' %}"
+               class="block w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg hover:bg-gray-700 transition-colors text-gray-200 hover:text-white text-center">
+                <span class="sidebar-label">Change Password</span>
+            </a>
         {% endif %}
         <form method="post" action="{% url 'logout' %}">
             {% csrf_token %}

@@ -1,5 +1,6 @@
 from datetime import datetime, time, timedelta
 from io import BytesIO
+from operator import is_
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -34,7 +35,13 @@ from openpyxl.utils import get_column_letter
 
 from accounts.models import User
 from tms.policies.load_actions import get_available_actions
-from tms.policies.roles import has_any_role, is_accounts, is_dispatcher
+from tms.policies.roles import (
+    has_any_role,
+    is_accounts,
+    is_dispatcher,
+    is_manager,
+    is_tracker,
+)
 from tms.services import load_locks
 from tms.services.cancel import cancel_load
 from tms.services.completion import complete_load
@@ -91,7 +98,6 @@ def dashboard(request):
 
     if is_dispatcher(user):
         today = timezone.localdate()
-        now = timezone.now()
 
         rc_exists_sq = LoadDocument.objects.filter(
             load=OuterRef("pk"), document_type=LoadDocument.DocumentType.RC
@@ -202,7 +208,26 @@ def dashboard(request):
         }
         return render(request, "dashboard/dashboard.html", context)
 
-    return render(request, "dashboard/dashboard.html", context={})
+    elif is_tracker(user):
+        context = {
+            "dashboard_template": "dashboard/_tracker_dashboard.html",
+        }
+        return render(request, "dashboard/dashboard.html", context)
+
+    elif is_accounts(user):
+        context = {
+            "dashboard_template": "dashboard/_accounts_dashboard.html",
+        }
+        return render(request, "dashboard/dashboard.html", context)
+
+    elif is_manager(user):
+        context = {
+            "dashboard_template": "dashboard/_manager_dashboard.html",
+        }
+        return render(request, "dashboard/dashboard.html", context)
+
+    else:
+        return HttpResponse("No dashboard available for your role.", status=403)
 
 
 @login_required

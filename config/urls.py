@@ -3,8 +3,22 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+from accounts.views import CustomPasswordChangeDoneView, CustomPasswordChangeView
+
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # Custom password change views (before generic auth urls)
+    path(
+        "accounts/password_change/",
+        CustomPasswordChangeView.as_view(),
+        name="password_change",
+    ),
+    path(
+        "accounts/password_change/done/",
+        CustomPasswordChangeDoneView.as_view(),
+        name="password_change_done",
+    ),
+    # All other auth URLs (login, logout, password reset, etc.)
     path("accounts/", include("django.contrib.auth.urls")),
     path("", include("tms.urls")),
 ]
