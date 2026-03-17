@@ -1,0 +1,57 @@
+<table class="min-w-full text-[15px] text-left text-gray-800">
+    <tbody>
+        {% for truck in page_obj %}
+            <tr class="border-b border-gray-200 hover:bg-gray-50 transition-colors">
+                <td class="table-cell px-6 py-4 font-semibold text-gray-900">{{ truck.truck_number }}</td>
+                <td class="table-cell px-6 py-4">{{ truck.carrier.name }}</td>
+                <td class="table-cell px-6 py-4">{{ truck.get_equipment_type_display }}</td>
+                <td class="table-cell px-6 py-4">{{ truck.trailer_number|default:"-" }}</td>
+                <td class="table-cell px-6 py-4">{{ truck.license_plate }}</td>
+                <td class="table-cell px-6 py-4">{{ truck.vin|default:"-" }}</td>
+                <td class="table-cell px-6 py-4">{{ truck.length_feet }} ft</td>
+                <td class="table-cell px-6 py-4">
+                    {% if truck.current_status == 'available' %}
+                        <span class="badge-green">Available</span>
+                    {% elif truck.current_status == 'assigned' %}
+                        <span class="badge-amber">Assigned</span>
+                    {% else %}
+                        <span class="badge-red">Out of Service</span>
+                    {% endif %}
+                </td>
+                <td class="table-cell px-6 py-4">
+                    <a href="{% url 'truck_edit' truck.pk %}" class="btn-ghost btn-sm">Edit</a>
+                </td>
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="9" class="px-6 py-8 text-center text-gray-500">No trucks match your search.</td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if page_obj.paginator.num_pages > 1 %}
+    <div class="pagination">
+        <div class="step-links">
+            <div class="start">
+                {% if page_obj.has_previous %}
+                    <a href="?page=1{% if q %}&q={{ q }}{% endif %}">« First</a>
+                    <a href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}">‹ Previous</a>
+                {% else %}
+                    <span class="text-sm text-gray-400">« First</span>
+                    <span class="text-sm text-gray-400">‹ Previous</span>
+                {% endif %}
+            </div>
+            <span class="current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+            <div class="end">
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}">Next ›</a>
+                    <a href="?page={{ page_obj.paginator.num_pages }}{% if q %}&q={{ q }}{% endif %}">Last »</a>
+                {% else %}
+                    <span class="text-sm text-gray-400">Next ›</span>
+                    <span class="text-sm text-gray-400">Last »</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endif %}

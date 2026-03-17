@@ -1,0 +1,54 @@
+<table class="min-w-full text-[15px] text-left text-gray-800">
+    <tbody>
+        {% for facility in page_obj %}
+            <tr class="border-b border-gray-200 hover:bg-gray-50 transition-colors">
+                <td class="table-cell px-6 py-4 font-semibold text-gray-900">{{ facility.name }}</td>
+                <td class="table-cell px-6 py-4">
+                    <div class="text-gray-900">{{ facility.address_line1 }}</div>
+                    {% if facility.address_line2 %}
+                        <div class="text-sm text-gray-500">{{ facility.address_line2 }}</div>
+                    {% endif %}
+                </td>
+                <td class="table-cell px-6 py-4">{{ facility.city }}</td>
+                <td class="table-cell px-6 py-4">{{ facility.state }}</td>
+                <td class="table-cell px-6 py-4">{{ facility.zip_code }}</td>
+                <td class="table-cell px-6 py-4">{{ facility.contact_name|default:"-" }}</td>
+                <td class="table-cell px-6 py-4">{{ facility.phone|default:"-" }}</td>
+                <td class="table-cell px-6 py-4">{{ facility.notes|default:"-"|truncatechars:60 }}</td>
+                <td class="table-cell px-6 py-4">
+                    <a href="{% url 'facility_edit' facility.pk %}" class="btn-ghost btn-sm">Edit</a>
+                </td>
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="9" class="px-6 py-8 text-center text-gray-500">No facilities match your search.</td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if page_obj.paginator.num_pages > 1 %}
+    <div class="pagination">
+        <div class="step-links">
+            <div class="start">
+                {% if page_obj.has_previous %}
+                    <a href="?page=1{% if q %}&q={{ q }}{% endif %}">« First</a>
+                    <a href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}">‹ Previous</a>
+                {% else %}
+                    <span class="text-sm text-gray-400">« First</span>
+                    <span class="text-sm text-gray-400">‹ Previous</span>
+                {% endif %}
+            </div>
+            <span class="current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+            <div class="end">
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}">Next ›</a>
+                    <a href="?page={{ page_obj.paginator.num_pages }}{% if q %}&q={{ q }}{% endif %}">Last »</a>
+                {% else %}
+                    <span class="text-sm text-gray-400">Next ›</span>
+                    <span class="text-sm text-gray-400">Last »</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endif %}

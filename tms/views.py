@@ -1,5 +1,7 @@
+import re
 from datetime import datetime, time, timedelta
 from io import BytesIO
+from multiprocessing import context
 from operator import is_
 
 from django.contrib import messages
@@ -32,6 +34,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
+from django.db import transaction
 
 from accounts.models import User
 from tms.policies.load_actions import get_available_actions
@@ -906,15 +909,20 @@ def my_loads_export_excel(request):
 @login_required
 def carriers_list(request):
     """List normal carriers only (exclude owner-operators)."""
+    q = request.GET.get("q", "").strip()
     carriers = Carrier.objects.filter(
         carrier_type=Carrier.CarrierType.COMPANY
     ).order_by("name")
+    if q:
+        carriers = carriers.filter(name__icontains=q)
 
     paginator = Paginator(carriers, 20)  # 20 carriers per page
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
 
-    context = {"carriers": page_obj.object_list, "page_obj": page_obj}
+    context = {"carriers": page_obj.object_list, "page_obj": page_obj, "q": q}
+    if request.headers.get("HX-Request"):
+        return render(request, "tms/partials/_carriers_rows.html", context)
 
     return render(request, "tms/carriers_list.html", context)
 
@@ -922,15 +930,23 @@ def carriers_list(request):
 @login_required
 def owner_operators_list(request):
     """List owner-operator carriers."""
+    q = request.GET.get("q", "").strip()
     owner_operators = Carrier.objects.filter(
         carrier_type=Carrier.CarrierType.OWNER_OPERATOR
     ).order_by("name")
+
+    if q:
+        owner_operators = owner_operators.filter(name__icontains=q)
 
     paginator = Paginator(owner_operators, 20)  # 20 owner-operators per page
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
 
-    context = {"owner_operators": page_obj.object_list, "page_obj": page_obj}
+    context = {"owner_operators": page_obj.object_list, "page_obj": page_obj, "q": q}
+
+    if request.headers.get("HX-Request"):
+        return render(request, "tms/partials/_owner_operators_rows.html", context)
+
     return render(request, "tms/owner_operators_list.html", context)
 
 
@@ -956,15 +972,26 @@ def carrier_create(request):
 @login_required
 def drivers_list(request):
     """List all drivers with pagination."""
+    q = request.GET.get("q", "").strip()
     drivers = Driver.objects.select_related("carrier", "current_truck").order_by(
         "last_name", "first_name"
     )
+    if q:
+        drivers = drivers.filter(
+            Q(first_name__icontains=q)
+            | Q(last_name__icontains=q)
+            | Q(carrier__name__icontains=q)
+        )
 
     paginator = Paginator(drivers, 20)  # 20 drivers per page
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
 
-    context = {"drivers": page_obj.object_list, "page_obj": page_obj}
+    context = {"drivers": page_obj.object_list, "page_obj": page_obj, "q": q}
+
+    if request.headers.get("HX-Request") == "true":
+        # If HTMX request, return partial HTML for just the drivers table
+        return render(request, "tms/partials/_drivers_rows.html", context)
 
     return render(request, "tms/drivers_list.html", context)
 
@@ -1069,13 +1096,22 @@ def owner_operator_create(request):
 @login_required
 def trucks_list(request):
     """List all trucks with pagination."""
+    q = request.GET.get("q", "").strip()
     trucks = Truck.objects.select_related("carrier").order_by("truck_number")
+
+    if q:
+        trucks = trucks.filter(
+            Q(truck_number__icontains=q) | Q(carrier__name__icontains=q)
+        )
 
     paginator = Paginator(trucks, 20)  # 20 trucks per page
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
 
-    context = {"trucks": page_obj.object_list, "page_obj": page_obj}
+    context = {"trucks": page_obj.object_list, "page_obj": page_obj, "q": q}
+
+    if request.headers.get("HX-Request"):
+        return render(request, "tms/partials/_trucks_rows.html", context)
     return render(request, "tms/trucks_list.html", context)
 
 
@@ -1514,35 +1550,41 @@ def search_facilities(request):
 @login_required
 def facilities_list(request):
     # apply pagination
-
+    q = request.GET.get("q", "").strip()
     facilities = Facility.objects.all().order_by("name")
 
+    if q:
+        facilities = facilities.filter(name__icontains=q)
     paginator = Paginator(facilities, 20)  # 20 facilities per page
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
 
+    context = {"facilities": page_obj.object_list, "page_obj": page_obj, "q": q}
+    if request.headers.get("HX-Request"):
+        return render(request, "tms/partials/_facilities_rows.html", context)
     return render(
         request,
         "tms/facilities_list.html",
-        {"facilities": page_obj.object_list, "page_obj": page_obj},
+        context,
     )
 
 
 @login_required
 def brokers_list(request):
     # apply pagination
-
+    q = request.GET.get("q", "").strip()
     brokers = Broker.objects.all().order_by("name")
 
+    if q:
+        brokers = brokers.filter(name__icontains=q)
     paginator = Paginator(brokers, 20)  # 20 brokers per page
     page_number = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_number)
 
-    return render(
-        request,
-        "tms/brokers_list.html",
-        {"brokers": page_obj.object_list, "page_obj": page_obj},
-    )
+    context = {"brokers": page_obj.object_list, "page_obj": page_obj, "q": q}
+    if request.headers.get("HX-Request"):
+        return render(request, "tms/partials/_brokers_rows.html", context)
+    return render(request, "tms/brokers_list.html", context)
 
 
 @login_required
@@ -1577,3 +1619,218 @@ def broker_create(request):
         form = BrokerForm()
 
     return render(request, "tms/broker_create.html", {"form": form})
+
+
+# edit views
+@login_required
+def facility_edit(request, pk):
+    facility = get_object_or_404(Facility, pk=pk)
+    if request.method == "POST":
+        form = FacilityForm(request.POST, instance=facility)
+        if form.is_valid():
+            form.save()
+            messages.success(
+                request, f"Facility '{facility.name}' updated successfully!"
+            )
+            return redirect("facilities_list")
+    else:
+        form = FacilityForm(instance=facility)
+
+    return render(
+        request, "tms/facility_edit.html", {"form": form, "facility": facility}
+    )
+
+
+@login_required
+def broker_edit(request, pk):
+    broker = get_object_or_404(Broker, pk=pk)
+    if request.method == "POST":
+        form = BrokerForm(request.POST, instance=broker)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Broker '{broker.name}' updated successfully!")
+            return redirect("brokers_list")
+    else:
+        form = BrokerForm(instance=broker)
+
+    return render(request, "tms/broker_edit.html", {"form": form, "broker": broker})
+
+
+@login_required
+def carrier_edit(request, pk):
+    carrier = get_object_or_404(
+        Carrier, pk=pk, carrier_type=Carrier.CarrierType.COMPANY
+    )
+    if request.method == "POST":
+        form = CarrierForm(request.POST, instance=carrier)
+        if form.is_valid():
+            c = form.save(commit=False)
+            c.carrier_type = Carrier.CarrierType.COMPANY  # Ensure type doesn't change
+            c.save()
+            messages.success(request, f"Carrier '{carrier.name}' updated successfully!")
+            return redirect("carriers_list")
+    else:
+        form = CarrierForm(instance=carrier)
+    return render(request, "tms/carrier_edit.html", {"form": form, "carrier": carrier})
+
+
+@login_required
+def truck_edit(request, pk):
+    truck = get_object_or_404(Truck, pk=pk)
+    if request.method == "POST":
+        form = TruckForm(request.POST, instance=truck)
+        if form.is_valid():
+            form.save()
+            messages.success(
+                request, f"Truck '{truck.truck_number}' updated successfully!"
+            )
+            return redirect("trucks_list")
+    else:
+        form = TruckForm(instance=truck)
+    return render(request, "tms/truck_edit.html", {"form": form, "truck": truck})
+
+
+@login_required
+def driver_edit(request, pk):
+    driver = get_object_or_404(Driver, pk=pk)
+    if request.method == "POST":
+        form = DriverForm(request.POST, instance=driver)
+        if form.is_valid():
+            form.save()
+            messages.success(
+                request, f"Driver '{driver.full_name}' updated successfully!"
+            )
+            return redirect("drivers_list")
+    else:
+        form = DriverForm(instance=driver)
+    return render(request, "tms/driver_edit.html", {"form": form, "driver": driver})
+
+
+@login_required
+def owner_operator_edit(request, pk):
+    carrier = get_object_or_404(
+        Carrier, pk=pk, carrier_type=Carrier.CarrierType.OWNER_OPERATOR
+    )
+    driver = carrier.drivers.first()  # Assuming one driver per owner-operator
+    truck = carrier.trucks.first()  # Assuming one truck per owner-operator
+
+    if request.method == "POST":
+        form = OwnerOperatorForm(request.POST)
+
+        if form.is_valid():
+            with transaction.atomic():
+                # Update carrier
+                carrier.name = form.cleaned_data["carrier_name"]
+                carrier.mc_number = form.cleaned_data["mc_number"]
+                carrier.dot_number = form.cleaned_data["dot_number"]
+                carrier.primary_contact_name = form.cleaned_data["primary_contact_name"]
+                carrier.primary_phone = form.cleaned_data["primary_phone"]
+                carrier.primary_email = form.cleaned_data["primary_email"]
+                carrier.address_line1 = form.cleaned_data["address_line1"]
+                carrier.address_line2 = form.cleaned_data.get("address_line2", "")
+                carrier.city = form.cleaned_data["city"]
+                carrier.state = form.cleaned_data["state"]
+                carrier.zip_code = form.cleaned_data["zip_code"]
+                carrier.carrier_has_insurance = form.cleaned_data.get(
+                    "carrier_has_insurance", True
+                )
+                carrier.notes = form.cleaned_data.get("carrier_notes", "")
+                carrier.save()
+
+                # Update driver
+                if driver:
+                    driver.first_name = form.cleaned_data["driver_first_name"]
+                    driver.last_name = form.cleaned_data["driver_last_name"]
+                    driver.phone = form.cleaned_data["driver_phone"]
+                    driver.email = form.cleaned_data.get("driver_email", "")
+                    driver.cdl_number = form.cleaned_data["cdl_number"]
+                    driver.cdl_expiration = form.cleaned_data.get("cdl_expiration")
+                    driver.hos_cycle = form.cleaned_data["hos_cycle"]
+                    driver.notes = form.cleaned_data.get("driver_notes", "")
+                    driver.save()
+
+                # Update truck
+                if truck:
+                    truck.truck_number = form.cleaned_data["truck_number"]
+                    truck.trailer_number = form.cleaned_data.get("trailer_number", "")
+                    truck.equipment_type = form.cleaned_data["equipment_type"]
+                    truck.vin = form.cleaned_data.get("vin", "")
+                    truck.license_plate = form.cleaned_data["license_plate"]
+                    truck.chassis_no = form.cleaned_data.get("chassis_no", "")
+                    truck.truck_has_insurance = form.cleaned_data.get(
+                        "truck_has_insurance", True
+                    )
+                    truck.notes = form.cleaned_data.get("truck_notes", "")
+                    truck.save()
+
+            messages.success(
+                request, f"Owner-operator '{carrier.name}' updated successfully!"
+            )
+            return redirect("owner_operators_list")
+
+    else:
+        initial = {
+            "carrier_name": carrier.name,
+            "mc_number": carrier.mc_number,
+            "dot_number": carrier.dot_number,
+            "primary_contact_name": carrier.primary_contact_name,
+            "primary_phone": carrier.primary_phone,
+            "primary_email": carrier.primary_email,
+            "address_line1": carrier.address_line1,
+            "address_line2": carrier.address_line2,
+            "city": carrier.city,
+            "state": carrier.state,
+            "zip_code": carrier.zip_code,
+            "carrier_has_insurance": carrier.carrier_has_insurance,
+            "carrier_notes": carrier.notes,
+        }
+        if driver:
+            initial.update(
+                {
+                    "driver_first_name": driver.first_name,
+                    "driver_last_name": driver.last_name,
+                    "driver_phone": driver.phone,
+                    "driver_email": driver.email,
+                    "cdl_number": driver.cdl_number,
+                    "cdl_expiration": driver.cdl_expiration,
+                    "hos_cycle": driver.hos_cycle,
+                    "driver_notes": driver.notes,
+                }
+            )
+        if truck:
+            initial.update(
+                {
+                    "truck_number": truck.truck_number,
+                    "trailer_number": truck.trailer_number,
+                    "equipment_type": truck.equipment_type,
+                    "vin": truck.vin,
+                    "license_plate": truck.license_plate,
+                    "chassis_no": truck.chassis_no,
+                    "truck_has_insurance": truck.truck_has_insurance,
+                    "truck_notes": truck.notes,
+                }
+            )
+
+    return render(
+        request,
+        "tms/owner_operator_edit.html",
+        {
+            "form": OwnerOperatorForm(initial=initial),
+            "carrier": carrier,
+            "driver": driver,
+            "truck": truck,
+        },
+    )
+
+
+@login_required
+@require_POST
+@require_load_lock
+def delete_document(request, load_id, doc_id):
+    """Delete a document from a load."""
+    load = get_object_or_404(Load, load_id=load_id)
+    doc = get_object_or_404(LoadDocument, pk=doc_id, load=load)
+    doc_name = doc.original_filename
+    doc.delete()
+    messages.success(request, f"Document '{doc_name}' deleted successfully.")
+    return redirect("load_detail", load_id=load.load_id)
